@@ -9,12 +9,17 @@ git clone https://gitee.com/zqli6/k8s/
 ```
 # 2. To get one file of this repository
 1. GitHub
-```python
 wget https://raw.githubusercontent.com/zqli6/k8s/main/path/to/file
+```python
+wget https://raw.githubusercontent.com/zqli6/k8s/main/
 ```
-2. Gitee
 ```
+wget https://ghproxy.net/https://raw.githubusercontent.com/zqli6/k8s/main/
+```
+2. Gitee  
 wget https://gitee.com/zqli6/k8s/raw/main/path/to/file
+```
+wget https://gitee.com/zqli6/k8s/raw/main/
 ```
 # 3. Clone this repostory with ssh
 ## 3.1 Cpoy public key to github
