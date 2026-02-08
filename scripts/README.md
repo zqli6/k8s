@@ -5,5 +5,6 @@
 <https://github.com/Mirantis/cri-dockerd/releases>
 3. Kubernetes  
 <https://github.com/kubernetes/kubernetes>
-# 2. install_kubernetes_containerd.sh  
+# 2. install_kubernetes_containerd.sh
+1. To download the latest containerd form GitHub  
 <https://github.com/containerd/containerd>
