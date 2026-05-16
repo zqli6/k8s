@@ -1,0 +1,13 @@
+# kubectl autoscale deployment php-apache --cpu-percent=50 --min=1 --max=10
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: php-apache
+spec:
+  maxReplicas: 10
+  minReplicas: 1
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: php-apache
+  targetCPUUtilizationPercentage: 50

@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  labels:
+    app.kubernetes.io/component: grafana
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/part-of: kube-prometheus
+    app.kubernetes.io/version: 12.4.1
+  name: grafana-config
+  namespace: monitoring
+stringData:
+  grafana.ini: |
+    [date_formats]
+    default_timezone = UTC
+
+    # 核心修改：开启 MySQL 模式并引用环境变量
+    [database]
+    type = mysql
+    host = ${GF_DATABASE_HOST}
+    name = ${GF_DATABASE_NAME}
+    user = ${GF_DATABASE_USER}
+    password = ${GF_DATABASE_PASSWORD}
+type: Opaque

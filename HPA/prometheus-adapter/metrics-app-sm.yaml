@@ -1,0 +1,19 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: metrics-app
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: kube-prometheus
+    release: prometheus-k8s
+spec:
+  namespaceSelector:
+    matchNames:
+      - default
+  selector:
+    matchLabels:
+      app: metrics-app
+  endpoints:
+  - port: web
+    interval: 15s
+    path: /metrics

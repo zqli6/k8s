@@ -1,0 +1,103 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMCluster
+metadata:
+  name: vm-cluster-ha
+  namespace: vm
+spec:
+  replicationFactor: 2
+  retentionPeriod: 30d
+  requestsLoadBalancer:
+    enabled: true
+    spec:
+      image:
+        repository: swr.cn-southwest-2.myhuaweicloud.com/zqli/victoriametrics/vmauth
+        tag: v1.136.0
+      replicaCount: 2
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+  vminsert:
+    replicaCount: 3
+    image:
+      repository: swr.cn-southwest-2.myhuaweicloud.com/zqli/victoriametrics/vminsert
+      tag: v1.140.0-cluster
+    resources:
+      limits:
+        cpu: "1"
+        memory: 1Gi
+      requests:
+        cpu: 100m
+        memory: 256Mi
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+        - podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                - vminsert
+            topologyKey: kubernetes.io/hostname
+          weight: 100
+    extraArgs:
+      replicationFactor: "2"
+  vmselect:
+    replicaCount: 3
+    image:
+      repository: swr.cn-southwest-2.myhuaweicloud.com/zqli/victoriametrics/vmselect
+      tag: v1.140.0-cluster
+    resources:
+      limits:
+        cpu: "2"
+        memory: 4Gi
+      requests:
+        cpu: 100m
+        memory: 256Mi
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+        - podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                - vmselect
+            topologyKey: kubernetes.io/hostname
+          weight: 100
+    extraArgs:
+      replicationFactor: "2"
+      # ✅ 新增的关键部分
+      dedup.minScrapeInterval: "30s"   # 30s 需要和实际的 scrape_interval 对齐。如果 Prometheus/vmagent 的采集间隔是 15s，这个值应该设 "15s" 或 "1ms"（精确去重），设成 30s 会在边界情况下丢点。
+  vmstorage:
+    replicaCount: 3
+    image:
+      repository: swr.cn-southwest-2.myhuaweicloud.com/zqli/victoriametrics/vmstorage
+      tag: v1.140.0-cluster
+    resources:
+      limits:
+        cpu: "2"
+        memory: 4Gi
+      requests:
+        cpu: 300m
+        memory: 1Gi
+    affinity:
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchExpressions:
+            - key: app.kubernetes.io/name
+              operator: In
+              values:
+              - vmstorage
+          topologyKey: kubernetes.io/hostname
+    storage:
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+          - ReadWriteOnce
+          resources:
+            requests:
+              storage: 100Gi

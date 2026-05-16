@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hpav2-demo-deployment
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: hpav2-demo
+  template:
+    metadata:
+      labels:
+        app: hpav2-demo
+    spec:
+      containers:
+        - name: hpav2-demo-deployment
+          # image: registry.cn-beijing.aliyuncs.com/wangxiaochun/nginx:1.20.0
+          image: registry.cn-beijing.aliyuncs.com/wangxiaochun/pod-test:v0.1
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hpav2-demo-svc
+  labels:
+    app: nginx
+spec:
+  ports:
+    - port: 80
+      name: http
+  selector:
+    app: hpav2-demo
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hpav2-cpu-demo
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hpav2-demo-deployment
+  minReplicas: 1          # 最小副本数，缩容时不会低于此值
+  maxReplicas: 10         # 最大副本数，扩容时不会超过此值
+  metrics:                # 定义扩缩指标
+    - type: Resource
+      resource:
+        name: cpu         # 监控CPU资源
+        target:
+          type: Utilization           # 指标目标值设置，使用利用率百分比类型
+          averageUtilization: 50      # 目标CPU利用率设置为50%，HPA会调整副本数使CPU平均利用率接近此值
+    # - type: Resource
+    #   resource:
+    #     name: memory    # 监控内存资源
+    #     target:
+    #       type: Utilization
+    #       averageUtilization: 30     # 目标内存利用率设置为30%
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 10  # 默认值为300s，缩容等待时间，缩容稳定窗口时间设置为10秒，在这段时间内HPA会观察指标是否稳定在目标值以下

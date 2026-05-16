@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: external-mysql
+  namespace: monitoring
+spec:
+  type: ClusterIP
+  ports:
+  - name: mysql           # 关键点：增加端口名称
+    port: 3306            # 集群内访问端口
+    targetPort: 3306      # 后端外部数据库端口
+    protocol: TCP
+
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: external-mysql
+  namespace: monitoring
+  labels:
+    kubernetes.io/service-name: external-mysql
+addressType: IPv4
+ports:
+  - name: mysql           # 关键点：必须与 Service 中的 name 保持一致
+    port: 3306
+    protocol: TCP
+endpoints:
+  - addresses:
+      - "10.0.0.101"
+    conditions:
+      ready: true

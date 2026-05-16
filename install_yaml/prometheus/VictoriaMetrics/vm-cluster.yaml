@@ -1,0 +1,108 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMCluster
+metadata:
+  name: vm-cluster-ha
+  namespace: vm
+spec:
+  replicationFactor: 2
+  retentionPeriod: "30d"
+  
+  # --- 1. 存储节点 (vmstorage) ---
+  # 核心：IO 与 内存密集型。生产中建议 Requests 与 Limits 保持 1:1，防止因抢占导致的性能抖动。
+  vmstorage:
+    replicaCount: 3
+    image:
+      repository: swr.cn-southwest-2.myhuaweicloud.com/zqli/victoriametrics/vmstorage
+      tag: v1.140.0-cluster
+    resources:
+      requests:
+        cpu: "300m"      # [当前可用值] 生产推荐: 2 ~ 4C (根据 ingestion rate 调整)
+        memory: "1Gi"    # [当前可用值] 生产推荐: 8Gi ~ 32Gi (取决于活跃时间序列数量)
+      limits:
+        cpu: "2"         
+        memory: "4Gi"
+    affinity:
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+                - key: "app.kubernetes.io/name"
+                  operator: In
+                  values: ["vmstorage"]
+            topologyKey: "kubernetes.io/hostname"
+    storage:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 100Gi
+
+  # --- 2. 写入节点 (vminsert) ---
+  # 核心：CPU 密集型。主要负责数据解析。
+  vminsert:
+    replicaCount: 3
+    image:
+      repository: swr.cn-southwest-2.myhuaweicloud.com/zqli/victoriametrics/vminsert
+      tag: v1.140.0-cluster
+    resources:
+      requests:
+        cpu: "100m"      # [当前可用值] 生产推荐: 500m ~ 1C
+        memory: "256Mi"  # [当前可用值] 生产推荐: 1Gi ~ 2Gi
+      limits:
+        cpu: "1"
+        memory: "1Gi"
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+              - key: "app.kubernetes.io/name"
+                operator: In
+                values: ["vminsert"]
+            topologyKey: "kubernetes.io/hostname"
+    extraArgs:
+      replicationFactor: "2"
+
+  # --- 3. 查询节点 (vmselect) ---
+  # 核心：内存密集型。查询范围越大，消耗内存越高。
+  vmselect:
+    replicaCount: 3
+    image:
+      repository: swr.cn-southwest-2.myhuaweicloud.com/zqli/victoriametrics/vmselect
+      tag: v1.140.0-cluster
+    resources:
+      requests:
+        cpu: "100m"      # [当前可用值] 生产推荐: 500m ~ 1C
+        memory: "256Mi"  # [当前可用值] 生产推荐: 2Gi ~ 8Gi (大范围查询很吃内存)
+      limits:
+        cpu: "2"
+        memory: "4Gi"
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+              - key: "app.kubernetes.io/name"
+                operator: In
+                values: ["vmselect"]
+            topologyKey: "kubernetes.io/hostname"
+    extraArgs:
+      replicationFactor: "2"
+
+  # --- 4. 负载均衡器 (VMAuth) ---
+  requestsLoadBalancer:
+    enabled: true
+    spec:
+      replicaCount: 2
+      image:
+        repository: swr.cn-southwest-2.myhuaweicloud.com/zqli/victoriametrics/vmauth
+        tag: v1.136.0
+      resources:
+        requests:
+          cpu: "50m"      # [当前可用值] 生产推荐: 100m ~ 200m
+          memory: "128Mi" # [当前可用值] 生产推荐: 256Mi ~ 512Mi

@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  labels:
+    app.kubernetes.io/component: grafana
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/part-of: kube-prometheus
+    app.kubernetes.io/version: 12.4.1
+  name: grafana-datasources
+  namespace: monitoring
+stringData:
+  datasources.yaml: |-
+    {
+        "apiVersion": 1,
+        "datasources": [
+            {
+                "access": "proxy",
+                "editable": false,
+                "name": "VictoriaMetrics",
+                "uid": "victoriametrics-datasource",
+                "orgId": 1,
+                "type": "prometheus",
+                "url": "http://vmselect-vm-cluster-ha.vm.svc:8481/select/0/prometheus/",
+                "isDefault": true,
+                "version": 1
+            }
+        ]
+    }
+type: Opaque

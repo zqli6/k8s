@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metrics-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: metrics-app
+      controller: metrics-app
+  template:
+    metadata:
+      labels:
+        app: metrics-app
+        controller: metrics-app
+      annotations:
+        prometheus.io/scrape: "true"       #允许prometheus 抓取指标，默认不允许
+        prometheus.io/port: "80"           #允许prometheus 抓取指标的端口
+        prometheus.io/path: "/metrics"     #允许prometheus 抓取指标的URL，此为默认值
+    spec:
+      containers:
+        - image: registry.cn-beijing.aliyuncs.com/wangxiaochun/metrics-app:v0.1
+          name: metrics-app
+          ports:
+            - name: web
+              containerPort: 80
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "500m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: metrics-app
+  labels:
+    app: metrics-app
+spec:
+  type: ClusterIP
+  ports:
+    - name: web
+      port: 80
+      targetPort: 80
+  selector:
+    app: metrics-app
+    controller: metrics-app
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: metrics-app-servicemonitor
+  labels:
+    app: metrics-app
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: metrics-app
+  endpoints:
+    - port: web
+      interval: 15s

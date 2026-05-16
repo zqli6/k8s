@@ -1,0 +1,29 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMSingle
+metadata:
+  name: vm-database
+  namespace: vm
+spec:
+  # --- 镜像配置 ---
+  image:
+    repository: swr.cn-southwest-2.myhuaweicloud.com/zqli/victoriametrics/victoria-metrics
+    tag: v1.140.0
+    pullPolicy: IfNotPresent
+
+  # --- 数据保留与规格 ---
+  retentionPeriod: "1"        # 数据保留 1 个月
+  
+  # --- 资源调度配置 (重点修改) ---
+  resources:
+    requests:
+      cpu: "200m"             # [当前可用] 生产推荐：2C ~ 8C (单机版承担所有压力，CPU要给足)
+      memory: "512Mi"         # [当前可用] 生产推荐：4Gi ~ 32Gi (单机版更依赖大内存做数据缓存)
+    limits:
+      cpu: "2"
+      memory: "4Gi"
+
+  # --- 存储配置 ---
+  storage:
+    resources:
+      requests:
+        storage: 50Gi         # 申请 50GB 磁盘空间用于存放数据和索引

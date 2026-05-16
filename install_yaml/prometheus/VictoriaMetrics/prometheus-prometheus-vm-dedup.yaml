@@ -1,0 +1,83 @@
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  labels:
+    app.kubernetes.io/component: prometheus
+    app.kubernetes.io/instance: k8s
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: kube-prometheus
+    app.kubernetes.io/version: 3.10.0
+  name: k8s
+  namespace: monitoring
+spec:
+  # --- 新增 1：统一业务标签（强烈建议） ---
+  externalLabels:
+    cluster: my-k8s-cluster      # 可换成你的集群标识
+    env: prod                    # 根据实际修改
+
+  # --- 修改 remoteWrite：原 url 基础上增加去标签规则 ---
+  remoteWrite:
+    #- url: "http://vmsingle-vm-database:8429/api/v1/write" # 单机版地址
+    # 如果是集群版，改为：
+    - url: "http://vminsert-vm-cluster-ha.vm.svc:8480/insert/0/prometheus/api/v1/write"
+    # 【注释说明】：
+    # vminsert-vm-cluster-ha: 指向写入层的 Service 名
+    # 8480: vminsert 的默认服务端口
+    # /insert/0/prometheus/...: VM 集群版的固定路径格式，其中的 '0' 代表租户 ID
+      # --- 新增 3：写之前强制删除可能存在的 replica 标签 ---
+      writeRelabelConfigs:
+        - action: labeldrop
+          regex: prometheus_replica   # 新增：丢弃 prometheus_replica 标签
+      queueConfig:
+        # capacity: 内存队列最多缓冲的批次数量（每批次约 maxSamplesPerSend 条样本）。
+        # 超出后样本会丢弃（触发 prometheus_remote_storage_samples_dropped_total 告警）。
+        capacity: 25000
+        # maxSamplesPerSend: 每次 HTTP POST 发送的最大样本数，调大减少请求频率，但需 VM 端支持大体积写入。
+        maxSamplesPerSend: 10000
+        # maxShards: 最大并发发送协程数（默认 200），高写入量时可调大。
+        # maxShards: 200
+        # batchSendDeadline: 单个批次最多等待时间（默认 5s），即使未满 maxSamplesPerSend 也会发送，保证延迟。
+        # batchSendDeadline: 5s
+        # 以上为示例调优值，请根据集群规模和 VM 吞吐量调整。若网络和 VM 稳定，可保留默认值。
+      # --- 新增 3 到此 ---
+
+  alerting:
+    alertmanagers:
+    - apiVersion: v2
+      name: alertmanager-main
+      namespace: monitoring
+      port: web
+  enableFeatures: []
+  # 注释掉原来的externalLabels
+  # externalLabels: {}
+  image: swr.cn-southwest-2.myhuaweicloud.com/zqli/quay.io/prometheus/prometheus:v3.10.0
+  nodeSelector:
+    kubernetes.io/os: linux
+  podMetadata:
+    labels:
+      app.kubernetes.io/component: prometheus
+      app.kubernetes.io/instance: k8s
+      app.kubernetes.io/name: prometheus
+      app.kubernetes.io/part-of: kube-prometheus
+      app.kubernetes.io/version: 3.10.0
+  podMonitorNamespaceSelector: {}
+  podMonitorSelector: {}
+  probeNamespaceSelector: {}
+  probeSelector: {}
+  replicas: 2
+  resources:
+    requests:
+      memory: 400Mi
+  ruleNamespaceSelector: {}
+  ruleSelector: {}
+  scrapeConfigNamespaceSelector: {}
+  scrapeConfigSelector: {}
+  securityContext:
+    fsGroup: 2000
+    runAsNonRoot: true
+    runAsUser: 1000
+  serviceAccountName: prometheus-k8s
+  serviceDiscoveryRole: EndpointSlice
+  serviceMonitorNamespaceSelector: {}
+  serviceMonitorSelector: {}
+  version: 3.10.0

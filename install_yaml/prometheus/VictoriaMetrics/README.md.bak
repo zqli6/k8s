@@ -1,0 +1,279 @@
+# 1. 相关网址
+1. VictoriaMetrics 项目官网：<https://github.com/VictoriaMetrics/operator>  
+2. lzq文档：[VictoriaMetrics/operator安装作为Prometheus持久化储存文档](https://www.yuque.com/jianglai-iayzx/sa1zul/podq5g7kxggtzots#sdwVE)
+
+# 2. 部署  
+默认已经安装Prometheus operator并且配置了ingress
+1. 部署 VM Operator (大脑)  
+```
+kubectl apply -f https://gitee.com/zqli6/k8s/raw/main/install_yaml/prometheus/VictoriaMetrics/install-no-webhook-lzq-0.68.3.yaml
+```
+## 2. 创建 VM 实例 (存储)  
+注意：需要有默认的storageclass
+1. 场景 A：单机版 (极简高效)  
+  ```
+  kubectl apply -f https://gitee.com/zqli6/k8s/raw/main/install_yaml/prometheus/VictoriaMetrics/vm-single.yaml
+  ```  
+2. 场景 B：集群版 (高可用)  
+  ```
+  kubectl apply -f https://gitee.com/zqli6/k8s/raw/main/install_yaml/prometheus/VictoriaMetrics/vm-cluster.yaml
+  ```  
+3. 验证  
+  ```
+  [root@master1 VictoriaMetrics ]# kubectl get pod -n vm
+  ```  
+## 3. 对接 Prometheus (数据同步)  
+1. 修改manifests/prometheus-prometheus.yaml
+```
+kubectl apply -f https://gitee.com/zqli6/k8s/raw/main/install_yaml/prometheus/VictoriaMetrics/prometheus-prometheus-vm.yaml
+```
+可选：重启Prometheus-k8s 或 删除pod让配置快速生效  
+```
+kubectl rollout restart sts -n monitoring prometheus-k8s
+
+kubectl delete pod -n monitoring prometheus-k8s-0 prometheus-k8s-1
+```
+```
+# 此处修改Prometheus operator中kube-prometheus-0.17.0/manifests/prometheus-prometheus.yaml
+# 修改 manifests/prometheus-prometheus.yaml
+spec:
+  remoteWrite:
+    #- url: "http://vmsingle-vm-database.vm.svc:8429/api/v1/write" # 单机版地址
+    - url: "http://vminsert-vm-cluster-ha.vm.svc:8480/insert/0/prometheus/api/v1/write"
+      # 【注释说明】：
+      # vminsert-vm-cluster-ha: 指向写入层的 Service 名
+      # 8480: vminsert 的默认服务端口
+      # /insert/0/prometheus/...: VM 集群版的固定路径格式，其中的 '0' 代表租户 ID
+```
+2. 验证  
+①在Prometheus 的web查询下方指标，有指标证明成功连接  
+```
+  prometheus_remote_storage_samples_total
+```  
+②或者直接查询 VictoriaMetrics 是否包含 Prometheus 写入的数据：  
+  
+先端口转发 vmselect  
+```
+  kubectl port-forward -n vm svc/vmselect-vm-cluster-ha 8481:8481 > /dev/null 2>&1 &
+```
+在另一个端口 VictoriaMetrics 中查询一个典型的 Prometheus 指标（例如 kube_node_info）：
+```
+  curl -G 'http://localhost:8481/select/0/prometheus/api/v1/query' --data-urlencode 'query=kube_node_info'
+```
+## 4. 指标去重  
+### 1. 未去重现象  
+`由于kube-prometheus有两个prometheus-k8s实现高可用，所以查询时会有两条指标如下`：
+```
+kubectl port-forward -n vm svc/vmselect-vm-cluster-ha 8481:8481 > /dev/null 2>&1 &
+```
+查询有重复指标，未格式化  
+```
+curl -s -G 'http://localhost:8481/select/0/prometheus/api/v1/query'   --data-urlencode 'query=prometheus_tsdb_head_samples_appended_total'
+```
+对重复指标进行统计  
+```
+curl -s 'http://localhost:8481/select/0/prometheus/api/v1/query?query=up' \
+  | grep -o '"instance":"[^"]*"' \
+  | sort | uniq -c
+```
+输出如下，明显重复  
+```      
+      8 "instance":"10.0.0.101:10250"
+      2 "instance":"10.0.0.101:6443"
+      ················
+```
+### 2. 配置Prometheus和Vitoriametric实现去重  
+`以下步骤中，如果配置未生效需删除pod重启生效`
+#### 1. 配置Prometheus  
+`修改manifests/prometheus-prometheus.yaml（修改上一步的prometheus-prometheus-vm.yaml）`  
+```
+kubectl apply -f https://gitee.com/zqli6/k8s/raw/main/install_yaml/prometheus/VictoriaMetrics/prometheus-prometheus-vm-dedup.yaml
+```
+可选：`重启Prometheus-k8s的statefuleset` 或 `删除 Prometheus-k8s pod` 使配置快速生效
+
+具体修改如下：
+```
+查看 vminsert 服务（如果是 VMCluster 部署）
+kubectl get svc -n vm | grep vminsert
+
+# 查看 VMSingle 服务（如果是单机版）
+kubectl get svc -n vm | grep vmsingle
+
+# 确认 Prometheus 当前是否已存在，以及它的名称和命名空间
+kubectl get prometheus -n monitoring
+
+# 输出
+vminsert-vm-cluster-ha           ClusterIP   10.103.18.78    <none>        8480/TCP                     81m
+vminsertinternal-vm-cluster-ha   ClusterIP   None            <none>        8480/TCP                     81m
+NAME   VERSION   DESIRED   READY   RECONCILED   AVAILABLE   AGE
+k8s    3.10.0    2         2       True         True        70m
+```
+
+```
+cp prometheus-prometheus-vm.yaml prometheus-prometheus-vm-dedup.yaml  
+
+vim prometheus-prometheus-vm-dedup.yaml
+
+# 修改内容如下：
+spec:
+  # --- 新增 1：统一业务标签（强烈建议） ---
+  externalLabels:
+    cluster: my-k8s-cluster      # 可换成你的集群标识
+    env: prod                    # 根据实际修改
+
+  # --- 修改 remoteWrite：原 url 基础上增加去标签规则 ---
+  remoteWrite:
+    #- url: "http://vmsingle-vm-database:8429/api/v1/write" # 单机版地址
+    # 如果是集群版，改为：
+    - url: "http://vminsert-vm-cluster-ha.vm.svc:8480/insert/0/prometheus/api/v1/write"
+    # 【注释说明】：
+    # vminsert-vm-cluster-ha: 指向写入层的 Service 名
+    # 8480: vminsert 的默认服务端口
+    # /insert/0/prometheus/...: VM 集群版的固定路径格式，其中的 '0' 代表租户 ID
+      # --- 新增 3：写之前强制删除可能存在的 replica 标签 ---
+      writeRelabelConfigs:
+        - action: labeldrop
+          regex: prometheus_replica   # 新增
+        - action: labeldrop
+          regex: pod                  # 新增
+      queueConfig:
+        max_samples_per_send: 10000
+        capacity: 25000
+```
+
+#### 2. 配置Vitoriametric  
+##### 方式一：修改 YAML 文件后 apply  
+修改`install_yaml/prometheus/VictoriaMetrics/vm-cluster.yaml`  
+```
+kubectl apply -f https://gitee.com/zqli6/k8s/raw/main/install_yaml/prometheus/VictoriaMetrics/vm-cluster-dedup.yaml
+```
+```
+kubectl get vmcluster vm-cluster-ha -n vm -o yaml > vmcluster-dedup.yaml
+# 编辑 vm-cluster-dedup.yaml，在上面的 spec.vmstorage 位置加上 extraArgs
+vim vm-cluster-dedup.yaml
+
+spec:
+  vmstorage:
+    # ... 原有其他字段（image, replicaCount, resources, affinity, storage）
+    extraArgs:
+      dedup.minScrapeInterval: "15s"  # 需要和实际 scrape_interval 对齐
+      replicationFactor: "2"
+```
+##### 方式二：直接编辑  
+```
+kubectl edit vmcluster vm-cluster-ha -n vm
+```
+在 spec.vmstorage 下面加入 extraArgs：
+```
+spec:
+  vmsselect:
+    # ... 原有配置（affinity、replicaCount 等） ...
+    extraArgs:
+      dedup.minScrapeInterval: "15s"    # 注意需要和实际 scrape_interval 对齐
+```
+保存退出后，Operator 会自动更新 vmstorage 的 StatefulSet 并触发滚动重启。
+
+#### 3. 验证  
+
+准备工作：port-forward vmselect
+```
+kubectl port-forward -n vm svc/vmselect-vm-cluster-ha 18481:8481 > /dev/null 2>&1 &
+```
+
+第一步：验证 Prometheus 双副本标签不同  
+```
+kubectl exec -n monitoring prometheus-k8s-0 -- \
+  cat /etc/prometheus/config_out/prometheus.env.yaml | grep -A5 'external_labels'
+
+kubectl exec -n monitoring prometheus-k8s-1 -- \
+  cat /etc/prometheus/config_out/prometheus.env.yaml | grep -A5 'external_labels'
+```
+✅ 预期：一个是 prometheus_replica: prometheus-k8s-0，另一个是 prometheus_replica: prometheus-k8s-1
+
+
+第二步：验证 vmselect 去重参数
+```
+kubectl exec -n vm vmselect-vm-cluster-ha-0 -- \
+  cat /proc/1/cmdline | tr '\0' '\n' | grep -E 'dedup|replication'
+```
+✅ 预期：
+```
+-dedup.minScrapeInterval=30s
+-replicationFactor=2
+```
+
+第三步：验证两个副本数据都写入了 VM
+```
+# 副本0有多少条 up
+curl 'http://localhost:18481/select/0/prometheus/api/v1/query?query=count(up%7Bprometheus_replica%3D%22prometheus-k8s-0%22%7D)&dedup=false'
+
+# 副本1有多少条 up
+curl 'http://localhost:18481/select/0/prometheus/api/v1/query?query=count(up%7Bprometheus_replica%3D%22prometheus-k8s-1%22%7D)&dedup=false'
+```
+✅ 预期：两个副本数量相同（比如都是 52），说明两份数据都正常写入
+
+第四步：验证去重效果
+```
+# 未去重：按 job+instance 聚合，两个副本会各贡献一份
+curl 'http://localhost:18481/select/0/prometheus/api/v1/query?query=count(up)%20by%20(job%2Cinstance)&dedup=false' \
+  | python3 -m json.tool | grep -c 'metric'
+
+# 去重后：相同 job+instance 合并成一份
+curl 'http://localhost:18481/select/0/prometheus/api/v1/query?query=count(up)%20by%20(job%2Cinstance)' \
+  | python3 -m json.tool | grep -c 'metric'
+```
+✅ 预期：两个结果数量相同（比如都是 36），说明去重后每个 job+instance 只保留了一份
+
+第五步：验证实际指标内容有 prometheus_replica 标签
+```
+curl 'http://localhost:18481/select/0/prometheus/api/v1/query?query=up' \
+  | python3 -m json.tool | grep 'prometheus_replica' | sort | uniq -c
+```
+✅ 预期：同时出现 prometheus-k8s-0 和 prometheus-k8s-1，各约 52 条，说明存储层保留了两份原始数据，去重只在查询时发生
+
+整体判断标准
+检查项正常表现两副本 replica 标签值不同（0和1）vmselect dedup 参数30s两副本写入数量相同by(job,instance) 去重前后数量相同（去重生效）VM 存储里有两份数据prometheus_replica 两个值都能查到
+
+## 5. 修改 Grafana 对接  
+1. 修改manifests/grafana-dashboardDatasources.yaml  
+```
+kubectl apply -f https://gitee.com/zqli6/k8s/raw/main/install_yaml/prometheus/VictoriaMetrics/grafana-dashboardDatasources-vm.yaml
+```
+```
+# 替换以下内容
+            {
+                "access": "proxy",
+                "editable": false,
+              # "name": "prometheus",  
+                "name": "VictoriaMetrics",
+                "uid": "victoriametrics-datasource",
+                "orgId": 1,
+                "type": "prometheus",
+              # "url": "http://prometheus-k8s.monitoring.svc:9090",
+                "url": "http://vmselect-vm-cluster-ha.vm.svc:8481/select/0/prometheus/",
+                "isDefault": true,  # VictoriaMetrics增加
+                "version": 1
+            }
+```
+注意：Grafana 默认使用 SQLite 数据库存储所有配置数据（用户、密码、仪表盘等），数据库文件位于容器内的 /var/lib/grafana/grafana.db。若未配置持久化存储，Pod 重启后该文件丢失，导致数据重置
+```
+# Grafana 的密码重置方法 admin reset-admin-password 新密码
+kubectl exec -it grafana-64944b7f44-pkk76 -n monitoring -- grafana-cli admin reset-admin-password g123456
+```
+2. 验证  
+```
+# 验证
+kubectl get secret -n monitoring grafana-datasources -o jsonpath='{.data.datasources\.yaml}' | base64 -d
+
+# 创建本地到pod的隧道
+# 将 Kubernetes 集群内部 monitoring 命名空间下的 grafana 服务（svc）的 3000 端口，转发到本地电脑的 3000 端口
+kubectl port-forward -n monitoring svc/grafana 3000:3000
+
+# 在另一个终端使用  用户名:密码  访问
+[root@master1 ~ ]# curl -s -u admin:g123456 http://localhost:3000/api/datasources | jq '.[] | {name, type, url}'
+{
+  "name": "VictoriaMetrics",
+  "type": "prometheus",
+  "url": "http://vmselect-vm-cluster-ha.vm.svc:8481/select/0/prometheus/"
+}
+```

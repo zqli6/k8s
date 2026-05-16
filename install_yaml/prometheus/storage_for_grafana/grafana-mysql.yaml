@@ -1,0 +1,89 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-grafana
+  namespace: monitoring
+  labels:
+    app: mysql-grafana
+spec:
+  ports:
+  - port: 3306
+    targetPort: 3306
+    name: mysql
+  selector:
+    app: mysql-grafana
+  # 去掉 clusterIP: None，使用普通 ClusterIP 以获得更稳定的 Service 负载均衡
+  type: ClusterIP
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql-grafana
+  namespace: monitoring
+spec:
+  serviceName: "mysql-grafana"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql-grafana
+  template:
+    metadata:
+      labels:
+        app: mysql-grafana
+    spec:
+      securityContext:
+        fsGroup: 1001
+      containers:
+      - name: mariadb
+        image: swr.cn-southwest-2.myhuaweicloud.com/zqli/bitnami/mariadb:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: MARIADB_ROOT_PASSWORD
+          value: "grafana_root_pw"
+        - name: MARIADB_USER
+          value: "grafana_user"
+        - name: MARIADB_PASSWORD
+          value: "grafana_pw"
+        - name: MARIADB_DATABASE
+          value: "grafana"
+        # 优化：增加字符集配置，防止中文乱码
+        - name: MARIADB_CHARACTER_SET
+          value: "utf8mb4"
+        - name: MARIADB_COLLATE
+          value: "utf8mb4_general_ci"
+        ports:
+        - containerPort: 3306
+          name: mysql
+        # 优化：增加资源限制
+        resources:
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+        # 优化：增加健康检查
+        livenessProbe:
+          exec:
+            command: ["/opt/bitnami/scripts/mariadb/healthcheck.sh"]
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command: ["/opt/bitnami/scripts/mariadb/healthcheck.sh"]
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        volumeMounts:
+        - name: mysql-data
+          mountPath: /bitnami/mariadb
+  volumeClaimTemplates:
+  - metadata:
+      name: mysql-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: "sc-nfs" # 确保该 SC 在当前 K8S 中已创建且正常
+      resources:
+        requests:
+          storage: 10Gi

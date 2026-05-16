@@ -1,0 +1,14 @@
+deployment:
+  deployment_name: myweb-deployment
+  replicas: 3
+  pod_label: myweb-pod-label
+  # image: wangxiaochun/pod-test
+  image: swr.cn-southwest-2.myhuaweicloud.com/zqli/pod-test
+  imageTag: v0.1
+  container_name: myweb-container
+service:
+  service_name: myweb-service
+  port: 80
+  targetport: 80
+  containerport: 80
+  # nodeport: 30080

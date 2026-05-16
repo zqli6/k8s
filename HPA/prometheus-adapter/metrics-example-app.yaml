@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metrics-app
+  labels:
+    app: metrics-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: metrics-app
+  template:
+    metadata:
+      labels:
+        app: metrics-app
+    spec:
+      containers:
+      - name: metrics-app
+        # 这个镜像国内基本都有缓存，拉取很快
+        image: swr.cn-southwest-2.myhuaweicloud.com/zqli/prom/statsd-exporter:v0.26.1
+        ports:
+        - name: web
+          containerPort: 9102
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: metrics-app
+  labels:
+    app: metrics-app
+spec:
+  ports:
+  - name: web
+    port: 80
+    targetPort: 9102
+  selector:
+    app: metrics-app
+  type: LoadBalancer

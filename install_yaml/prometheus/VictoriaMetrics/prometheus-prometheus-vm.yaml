@@ -1,0 +1,59 @@
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  labels:
+    app.kubernetes.io/component: prometheus
+    app.kubernetes.io/instance: k8s
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: kube-prometheus
+    app.kubernetes.io/version: 3.10.0
+  name: k8s
+  namespace: monitoring
+spec:
+  remoteWrite:
+    #- url: "http://vmsingle-vm-database:8429/api/v1/write" # 单机版地址
+    # 如果是集群版，改为：
+    - url: "http://vminsert-vm-cluster-ha.vm.svc:8480/insert/0/prometheus/api/v1/write"
+    # 【注释说明】：
+    # vminsert-vm-cluster-ha: 指向写入层的 Service 名
+    # 8480: vminsert 的默认服务端口
+    # /insert/0/prometheus/...: VM 集群版的固定路径格式，其中的 '0' 代表租户 ID
+  alerting:
+    alertmanagers:
+    - apiVersion: v2
+      name: alertmanager-main
+      namespace: monitoring
+      port: web
+  enableFeatures: []
+  externalLabels: {}
+  image: swr.cn-southwest-2.myhuaweicloud.com/zqli/quay.io/prometheus/prometheus:v3.10.0
+  nodeSelector:
+    kubernetes.io/os: linux
+  podMetadata:
+    labels:
+      app.kubernetes.io/component: prometheus
+      app.kubernetes.io/instance: k8s
+      app.kubernetes.io/name: prometheus
+      app.kubernetes.io/part-of: kube-prometheus
+      app.kubernetes.io/version: 3.10.0
+  podMonitorNamespaceSelector: {}
+  podMonitorSelector: {}
+  probeNamespaceSelector: {}
+  probeSelector: {}
+  replicas: 2
+  resources:
+    requests:
+      memory: 400Mi
+  ruleNamespaceSelector: {}
+  ruleSelector: {}
+  scrapeConfigNamespaceSelector: {}
+  scrapeConfigSelector: {}
+  securityContext:
+    fsGroup: 2000
+    runAsNonRoot: true
+    runAsUser: 1000
+  serviceAccountName: prometheus-k8s
+  serviceDiscoveryRole: EndpointSlice
+  serviceMonitorNamespaceSelector: {}
+  serviceMonitorSelector: {}
+  version: 3.10.0
