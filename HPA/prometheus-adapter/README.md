@@ -7,7 +7,7 @@
 ### 1. 基础环境准备
 首先需要安装 Prometheus 监控系统及相关的 Operator。
 * **参考文档**: [LZQ雨雀 部署文档](https://www.yuque.com/office/yuque/0/2026/pdf/61945248/1776278242382-25897578-e08d-44a4-9300-2d92696eccd7.pdf)
-* **安装包**: [LZQ Gitee Prometheus 安装源](https://gitee.com/zqli6/k8s/tree/main/install_yaml/prometheus)
+* **安装包**: [LZQ Gitee Prometheus 安装源](https://gitee.com/zqli6/prometheus)
 
 ### 2. 部署自定义指标路由 (APIService)
 这是关键的一步，它在 K8s API 中注册自定义指标组，将请求转发给 Adapter。
