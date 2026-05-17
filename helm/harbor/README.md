@@ -15,11 +15,12 @@ wget https://gitee.com/zqli6/k8s/raw/main/helm/harbor/harbor-1.18.3.tgz
 2. wget 下载yaml文件  
    1. SWR 镜像加速版
 ```
-wget https://gitee.com/zqli6/k8s/raw/main/helm/harbor-values_lzq.yml
-```  
+wget https://gitee.com/zqli6/k8s/raw/main/helm/harbor/harbor-values_lzq.yml
+```
 ```
 helm install myharbor -f harbor-values_lzq.yml harbor/harbor -n harbor --create-namespace
 或
+wget https://gitee.com/zqli6/k8s/raw/main/helm/harbor/harbor-1.18.3.tgz
 helm install myharbor -f harbor-values_lzq.yml harbor-1.18.3.tgz -n harbor --create-namespace
 ```
    2. 官方  
