@@ -135,6 +135,6 @@ ca.crt
 ```  
 ## 浏览器登录
 ```
-地址：ingress域名，注意配置域名解析
+地址：ingress域名(lzq默认配置harbor.lzq.com)，注意配置域名解析
 账号(admin)/密码(lzq12345)
 ```
