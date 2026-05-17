@@ -116,9 +116,25 @@ myharbor-portal       ClusterIP   10.104.21.35     <none>        80/TCP         
 myharbor-redis        ClusterIP   10.108.153.137   <none>        6379/TCP            92m
 myharbor-registry     ClusterIP   10.96.110.5      <none>        5000/TCP,8080/TCP   92m
 myharbor-trivy        ClusterIP   10.111.2.244     <none>        8080/TCP            92m
+```
 
-# 在浏览器登录  
+# 7. 在浏览器登录
+## 证书导出  
+```
+# 列出所有 Secret，过滤出可能包含证书的项
+kubectl get secrets -n harbor | grep -E "tls|cert"
+myharbor-ingress                 kubernetes.io/tls    3      15m
+
+[root@master1 ~ ]# kubectl get secret myharbor-ingress -n harbor -o jsonpath='{.data.ca\.crt}' | base64 --decode > ca.crt
+
+[root@master1 ~ ]# ls
+ca.crt
+
+# 把证书传送到window电脑并信任
+[root@master1 ~ ]# sz ca.crt
+```  
+## 浏览器登录
+```
 地址：ingress域名，注意配置域名解析
 账号(admin)/密码(lzq12345)
-
 ```
