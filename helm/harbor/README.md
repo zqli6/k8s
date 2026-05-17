@@ -20,7 +20,6 @@ wget https://gitee.com/zqli6/k8s/raw/main/helm/harbor/harbor-values_lzq.yml
 ```
 helm install myharbor -f harbor-values_lzq.yml harbor/harbor -n harbor --create-namespace
 或
-wget https://gitee.com/zqli6/k8s/raw/main/helm/harbor/harbor-1.18.3.tgz
 helm install myharbor -f harbor-values_lzq.yml harbor-1.18.3.tgz -n harbor --create-namespace
 ```
    2. 官方  
