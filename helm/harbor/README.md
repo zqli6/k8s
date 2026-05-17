@@ -138,3 +138,72 @@ ca.crt
 地址：ingress域名(lzq默认配置harbor.lzq.com)，注意配置域名解析
 账号(admin)/密码(lzq12345)
 ```
+# 8. docker/containerd/linux信任harbor  
+## 1. 配置 Docker 使用 CA 证书
+```
+# 导出 Harbor 的 CA 根证书
+kubectl get secrets -n harbor | grep -E "tls|cert"
+myharbor-ingress                 kubernetes.io/tls    3      15m
+# 从 Kubernetes Secret 导出（以 harbor-tls 为例，请根据实际 Secret 名称调整）
+kubectl get secret myharbor-ingress -n harbor -o jsonpath='{.data.ca\.crt}' | base64 --decode > ca.crt
+
+# 创建 Docker 证书目录并放入证书
+#Docker 会为每个 registry 域名读取 /etc/docker/certs.d/<域名>/ca.crt 作为信任锚。
+# 创建域名专属目录
+mkdir -p /etc/docker/certs.d/harbor.lzq.com
+
+# 将 CA 证书复制进去（必须命名为 ca.crt）
+cp ca.crt /etc/docker/certs.d/harbor.lzq.com/ca.crt
+
+# 重启 Docker 服务并登录
+systemctl restart docker
+
+# 再次尝试登录（建议使用 --password-stdin 避免警告）
+echo "lzq12345" | docker login -u admin --password-stdin harbor.lzq.com
+```
+
+## 2. 备选方案：将证书添加到系统 CA 信任库（影响所有应用）  
+此方法会让整个操作系统信任该 CA，适用于其他需要 TLS 验证的场景（如 curl、wget）。
+```
+# 导出 Harbor 的 CA 根证书
+kubectl get secrets -n harbor | grep -E "tls|cert"
+myharbor-ingress                 kubernetes.io/tls    3      15m
+# 从 Kubernetes Secret 导出（以 harbor-tls 为例，请根据实际 Secret 名称调整）
+kubectl get secret myharbor-ingress -n harbor -o jsonpath='{.data.ca\.crt}' | base64 --decode > ca.crt
+
+# 将私有CA的证书加入到每个docker主机的上信任证书CA列表中，在所有Harbor客户端执行
+
+# Ubuntu系统
+# 方法1
+$ cat /data/harbor/certs/ca.crt >> /etc/ssl/certs/ca-certificates.crt
+$ systemctl restart docker.service
+
+# 方法2
+$ cp /data/harbor/certs/ca.crt /usr/local/share/ca-certificates/harbor-ca.crt
+$ update-ca-certificates
+$ systemctl restart docker.service
+
+
+# 红帽系统
+# 方法1
+cat /data/harbor/certs/ca.crt >> /etc/pki/tls/certs/ca-bundle.crt
+
+# 方法2
+cp /data/harbor/certs/ca.crt /etc/pki/ca-trust/source/anchors/
+update-ca-trust
+
+# 将上面的文件复制到所有docker主机覆盖原文件
+# 并将所有docker主机的docker服务重启生效
+systemctl restart docker.service
+```
+
+## 3. 不推荐的临时方案：配置 insecure-registries
+```
+# 修改 /etc/docker/daemon.json，添加：
+json
+{
+  "insecure-registries": ["harbor.lzq.com"]
+}
+```
+然后 systemctl restart docker。此方式会完全跳过 TLS 验证，存在中间人攻击风险，仅建议在测试环境临时使用。
+
