@@ -4,5 +4,5 @@ docker pull swr.cn-southwest-2.myhuaweicloud.com/zqli/cni-plugins-linux-amd64:v1
 ```
 ```
 docker create --name cni swr.cn-southwest-2.myhuaweicloud.com/zqli/cni-plugins-linux-amd64:v1.6.2 echo
-docker cp cni:/data//data/cni-plugins-linux-amd64-v1.6.2.tgz .
+docker cp cni:/data/cni-plugins-linux-amd64-v1.6.2.tgz .
 ```
