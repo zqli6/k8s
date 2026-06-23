@@ -7,3 +7,4 @@ metadata:
 provisioner: k8s-sigs.io/nfs-subdir-external-provisioner # or choose another name, must match deployment's env PROVISIONER_NAME'
 parameters:
   archiveOnDelete: "true" # 设置为"false"时删除PVC不会保留数据,"true"则保留数据
+  pathPattern: ${.PVC.namespace}-${.PVC.name}  # 设置pvc的自定义路径名称，增加可读性
