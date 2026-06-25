@@ -205,5 +205,310 @@ json
   "insecure-registries": ["harbor.lzq.com"]
 }
 ```
-然后 systemctl restart docker。此方式会完全跳过 TLS 验证，存在中间人攻击风险，仅建议在测试环境临时使用。
+然后 systemctl restart docker。此方式会完全跳过 TLS 验证，存在中间人攻击风险，仅建议在测试环境临时使用。  
+
+  # 9. Harbor v2.14.3 ARM64 镜像构建指南
+
+  在服务器上从官方源码构建 Harbor v2.14.3 镜像。覆盖三种场景:
+
+  - **场景 A**:arm64 机器 + nerdctl(无 Docker,如 K3s 节点)
+  - **场景 B**:arm64 机器 + Docker
+  - **场景 C**:x86 机器交叉构建 arm64 镜像(QEMU 模拟)
+
+  > 背景:官方 Docker Hub 只提供 `goharbor/*:v2.14.3` 的 **amd64** 镜像,没有
+  arm64;社区也没有这个精确补丁版本。但官方源码自带 arm64 构建能力(`ARCH` 按宿主机架构自动识别),需自行构建。
+  >
+  > **优先级**:原生 arm64 构建(场景 A/B)最稳;x86 交叉构建(场景 C)依赖 QEMU 模拟,慢且偶有兼容问题,仅在没有 arm64
+  机器时使用。
+
+  ---
+
+  ## 前置要求
+
+  | 依赖 | 说明 |
+  |---|---|
+  | 构建机 | arm64 原生(场景 A/B)或 x86_64(场景 C) |
+  | 运行时 | nerdctl + BuildKit(场景 A) 或 Docker ≥ 20.10(场景 B/C) |
+  | git / make / python3 | clone、构建驱动、`prepare` 阶段生成配置 |
+  | 磁盘空间 | 构建峰值约 15~25 GB,建议预留 30 GB 以上 |
+
+  环境自检:
+
+  ```bash
+  uname -m                 # arm64 机器应为 aarch64;x86 机器为 x86_64
+  git --version && make --version && python3 --version
+  df -h /                  # 确认磁盘余量
+
+  # 场景 A 额外确认 buildkitd 在跑
+  ps aux | grep buildkitd
+
+  # 场景 B/C 额外确认 docker
+  docker version
+  docker buildx ls         # 场景 C 需要 buildx,输出里应能看到 linux/arm64
+  ```
+
+  ---
+
+  ## 第 1 步:拉取源码(指定 v2.14.3)
+
+  ```bash
+  git clone -b v2.14.3 --single-branch --depth 1 https://github.com/goharbor/harbor.git
+  cd harbor
+
+  # GitHub 慢时改用 gitee 同步镜像(稍慢于 GitHub,但国内更稳)
+  # git clone -b v2.14.3 --single-branch --depth 1 https://gitee.com/mirrors/harbor.git
+  ```
+
+  参数含义:
+
+  | 参数 | 作用 |
+  |---|---|
+  | `-b v2.14.3` | 直接检出 `v2.14.3` 这个 tag(无需再单独 `git checkout`) |
+  | `--single-branch` | 只拉取该 tag 对应的单条分支历史,不下载其他分支 |
+  | `--depth 1` | 浅克隆,只取最新一次提交,不要完整历史,体积更小、速度更快 |
+
+  > 浅克隆下 `git describe --tags` 可能不显示 tag,确认版本可看 `cat VERSION`。
+
+  ---
+
+  ## 第 2 步:生成配置文件
+
+  `prepare` 阶段会读取此文件,缺失会报错。构建镜像不依赖其中 hostname/密码,保持默认即可。
+
+  ```bash
+  cp make/harbor.yml.tmpl make/harbor.yml
+  ```
+
+  ---
+
+  ## 场景 A:arm64 + nerdctl(无 Docker)
+
+  ### A-1 关键前置:创建 docker → nerdctl 包装器
+
+  Harbor 的环境检查脚本 `make/checkenv.sh` **硬编码检查 `docker` 命令**,且要求版本 ≥ 20.10.10。它不认 `-e
+  DOCKERCMD=nerdctl`(那个变量只作用于后续构建命令,管不到这个前置检查),没有 `docker` 命令会直接报:
+
+  ```
+  ✖ Need to install docker(20.10.10+) first and run this script again.
+  make: *** [Makefile:350：check_environment] 错误 1
+  ```
+
+  解法:做一个包装器,`--version` 伪造一个高版本骗过检查,其余命令全部透传给 nerdctl。注意不能简单 `ln -s`——nerdctl 的
+  `--version` 输出格式不同,版本号会被误判为过低。
+
+  ```bash
+  cat > /usr/local/bin/docker <<'EOF'
+  #!/bin/bash
+  # checkenv.sh 只看 `docker --version` 的版本号,这里伪造一个高版本通过检查
+  if [ "$1" = "--version" ]; then
+    echo "Docker version 25.0.0, build nerdctl-shim"
+    exit 0
+  fi
+  # 其余全部透传给 nerdctl
+  exec nerdctl "$@"
+  EOF
+  chmod +x /usr/local/bin/docker
+
+  # 验证
+  docker --version          # 应显示 Docker version 25.0.0, build nerdctl-shim
+  docker images | head      # 应等同 nerdctl images
+
+  # 确认 /usr/local/bin 在 PATH 中(一般默认在)
+  echo $PATH | tr ':' '\n' | grep '/usr/local/bin'
+  ```
+
+  > 构建全部完成后如需移除包装器:`rm /usr/local/bin/docker`
+
+  ### A-2 编译(Go + 前端 portal)
+
+  用容器编译模式,宿主机无需安装 Go / Node。`go：未找到命令` 只是警告,会自动 fallback 到容器编译。
+
+  ```bash
+  make compile \
+    -e COMPILETAG=compile_golangimage \
+    -e PULL_BASE_FROM_DOCKERHUB=true
+  ```
+
+  ### A-3 构建镜像
+
+  ```bash
+  make build \
+    -e COMPILETAG=compile_golangimage \
+    -e VERSIONTAG=v2.14.3 \
+    -e PULL_BASE_FROM_DOCKERHUB=true \
+    -e BUILD_BASE=true \
+    -e TRIVYFLAG=true \
+    -e NOTARYFLAG=false \
+    -e CHARTFLAG=false \
+    -e GEN_TLS=true
+  ```
+
+  | 参数 | 作用 |
+  |---|---|
+  | `COMPILETAG=compile_golangimage` | 在 golang/node 容器内编译,宿主机零工具链依赖 |
+  | `VERSIONTAG=v2.14.3` | 镜像 tag 设为 v2.14.3 |
+  | `BUILD_BASE=true` | 构建 photon base 层 |
+  | `PULL_BASE_FROM_DOCKERHUB=true` | 拉官方 base 镜像省时间;不稳可改 `false` 自建(更慢) |
+  | `TRIVYFLAG=true` | 构建 trivy-adapter 扫描组件 |
+  | `NOTARYFLAG=false` / `CHARTFLAG=false` | 不构建 notary / chartmuseum(按需) |
+  | `GEN_TLS=true` | 生成 TLS 证书 |
+
+  > 包装器已把 `docker` 指向 nerdctl,所以这里不必再传 `DOCKERCMD=nerdctl`(传了也无害)。
+
+  ---
+
+  ## 场景 B:arm64 + Docker
+
+  和场景 A 一致,但**不需要包装器**(本机有真 docker),也不必传 `DOCKERCMD`。
+
+  ### B-1 编译
+
+  ```bash
+  make compile \
+    -e COMPILETAG=compile_golangimage \
+    -e PULL_BASE_FROM_DOCKERHUB=true
+  ```
+
+  ### B-2 构建镜像
+
+  ```bash
+  make build \
+    -e COMPILETAG=compile_golangimage \
+    -e VERSIONTAG=v2.14.3 \
+    -e PULL_BASE_FROM_DOCKERHUB=true \
+    -e BUILD_BASE=true \
+    -e TRIVYFLAG=true \
+    -e NOTARYFLAG=false \
+    -e CHARTFLAG=false \
+    -e GEN_TLS=true
+  ```
+
+  > 若宿主机已装好匹配版本的 Go/Node,可去掉 `COMPILETAG=compile_golangimage` 走默认的
+  `compile_normal`(用本机工具链,编译更快)。版本要求以源码 `go.mod` 为准。
+
+  ---
+
+  ## 场景 C:x86 机器交叉构建 arm64 镜像(QEMU 模拟)
+
+  在 x86_64 机器上构建 arm64 镜像,核心是让 x86 内核能运行 arm64 指令——通过 **QEMU binfmt** 模拟,再让构建流程全程以 arm64
+  架构运行。**比原生慢数倍,仅在无 arm64 机器时使用。**
+
+  ### C-1 注册 QEMU binfmt(让内核识别 arm64 二进制)
+
+  ```bash
+  # 一次性注册多架构模拟支持(重启后需重新执行,除非做了持久化)
+  docker run --privileged --rm tonistiigi/binfmt --install arm64
+
+  # 验证 arm64 已注册
+  docker run --privileged --rm tonistiigi/binfmt
+  ```
+
+  ### C-2 创建支持多架构的 buildx builder
+
+  ```bash
+  docker buildx create --name armbuilder --use --bootstrap
+  docker buildx ls          # 确认 armbuilder 支持 linux/arm64
+  ```
+
+  ### C-3 进入 arm64 模拟环境再构建(推荐做法)
+
+  Harbor 的 Makefile 默认按宿主机 `uname -m` 决定架构,x86 机器直接跑会产出 amd64。最可靠的做法是**先进入一个 arm64
+  容器**(经 QEMU 模拟,内部 `uname -m` 报告 `aarch64`),在其中执行第 1~2 步和编译/构建,整套流程自然按 arm64 走:
+
+  ```bash
+  # 启动一个 arm64 的构建环境容器(挂载源码与运行时)
+  docker run --privileged --platform linux/arm64 -it \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v "$PWD":/workspace -w /workspace \
+    arm64v8/golang:1.25 bash
+
+  # 容器内确认架构为 aarch64,再执行第 1~2 步、随后按场景 B 的 compile/build 流程
+  uname -m   # 期望 aarch64
+  ```
+
+  > 替代方案(buildx 多平台):对单个 Dockerfile 可用 `docker buildx build --platform linux/arm64 --load ...`,但 Harbor
+  多组件 Makefile 不直接支持 `--platform` 透传,需逐组件改造,工作量大,不推荐。
+  >
+  > **务必先给 Docker 配国内镜像 mirror**,否则 QEMU 环境下拉 base 镜像会非常慢。
+
+  ---
+
+  ## 第 3 步(通用):查看构建产物
+
+  ```bash
+  # 场景 A
+  nerdctl images | grep goharbor
+  # 场景 B/C
+  docker images | grep goharbor
+  ```
+
+  典型产物(以实际输出为准):
+
+  ```
+  goharbor/harbor-core            v2.14.3
+  goharbor/harbor-jobservice      v2.14.3
+  goharbor/harbor-portal          v2.14.3
+  goharbor/harbor-db              v2.14.3
+  goharbor/harbor-registryctl     v2.14.3
+  goharbor/harbor-exporter        v2.14.3
+  goharbor/registry-photon        v2.14.3
+  goharbor/nginx-photon           v2.14.3
+  goharbor/redis-photon           v2.14.3
+  goharbor/trivy-adapter-photon   v2.14.3
+  ```
+
+  > 单架构构建产物为 **单 manifest(arm64)**,非多架构 index。可用 `nerdctl manifest inspect <镜像>` 或 `docker manifest
+  inspect <镜像>` 确认 `mediaType`。
+
+  ---
+
+  ## 第 4 步(通用):推送到镜像仓库(SWR)
+
+  > 场景 A 把 `docker` 换成 `nerdctl`(或直接用包装器,`docker` 已指向 nerdctl),其余相同。
+
+  ```bash
+  docker login swr.cn-southwest-2.myhuaweicloud.com
+
+  # harbor- 前缀组件
+  for name in core jobservice portal db registryctl exporter; do
+    docker tag goharbor/harbor-${name}:v2.14.3 \
+      swr.cn-southwest-2.myhuaweicloud.com/zqli/goharbor/harbor-${name}:v2.14.3-arm
+    docker push swr.cn-southwest-2.myhuaweicloud.com/zqli/goharbor/harbor-${name}:v2.14.3-arm
+  done
+
+  # 无 harbor- 前缀组件
+  for name in registry-photon nginx-photon redis-photon trivy-adapter-photon; do
+    docker tag goharbor/${name}:v2.14.3 \
+      swr.cn-southwest-2.myhuaweicloud.com/zqli/goharbor/${name}:v2.14.3-arm
+    docker push swr.cn-southwest-2.myhuaweicloud.com/zqli/goharbor/${name}:v2.14.3-arm
+  done
+  ```
+
+  ---
+
+  ## 第 5 步(通用):清理构建缓存
+
+  ```bash
+  # 场景 A
+  nerdctl builder prune -a && nerdctl image prune
+
+  # 场景 B/C
+  docker builder prune -a && docker image prune
+  docker buildx prune -a        # 场景 C 额外清 buildx 缓存
+
+  df -h /                       # 确认空间回收
+  ```
+
+  ---
+
+  ## 常见问题
+
+  - **`Need to install docker(20.10.10+)`**(场景 A):见 A-1,checkenv.sh 硬检查 `docker` 命令,用包装器解决。
+  - **`go：未找到命令`**:仅警告,容器编译模式会自动 fallback,无需在宿主机装 Go。
+  - **拉基础镜像超时**:为 BuildKit / containerd / Docker 配置国内 mirror,或将 `PULL_BASE_FROM_DOCKERHUB` 改为 `false`
+  从源码自建 base。
+  - **nerdctl 报 `unknown flag`**(场景 A):Makefile 个别 `docker run` 可能带 nerdctl 不支持的参数,按提示微调对应 flag。
+  - **K3s 节点上 nerdctl 镜像看不到**:nerdctl 默认 `default` namespace,K3s 用 `k8s.io`,二者隔离。用 `nerdctl images`
+  查看,而非 `crictl images`。
+  - **构建出来是 amd64 而非 arm64**(场景 C):说明没跑在 arm64 模拟环境里,参考 C-3 先进入 arm64 容器再构建。
 
