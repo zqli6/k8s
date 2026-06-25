@@ -4,8 +4,8 @@
    * ingress-nginx部署yaml  
      <https://github.com/kubernetes/ingress-nginx/blob/main/deploy/static/provider/cloud/deploy.yaml>  
 # 2. 安装metalLB动态分配external IP  
-如果多节点自动分配external IP，需要安装metalLB，[点此查看](https://gitee.com/zqli6/k8s/tree/main/metalLB)  
-如果只是单节点，那么下方yaml中已经配置了固定external IP，按下方教程手动在固定节点网卡增加external IP即可
+- 如果多节点自动分配external IP，需要安装metalLB，[点此查看](https://gitee.com/zqli6/k8s/tree/main/metalLB)  
+- 如果只是单节点，那么下方yaml中已经配置了固定external IP，按下方教程手动在固定节点网卡增加external IP即可
 # 3. 部署ingress-nginx 使用 Lzq SWR 镜像加速yaml
 1. 部署ingress-nginx
       1.1 x86部署  
