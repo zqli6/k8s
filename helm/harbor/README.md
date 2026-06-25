@@ -207,7 +207,7 @@ json
 ```
 然后 systemctl restart docker。此方式会完全跳过 TLS 验证，存在中间人攻击风险，仅建议在测试环境临时使用。  
 
-  # Harbor v2.14.3 ARM64 镜像构建指南(国内 / 纯 nerdctl 实战版)
+  # 9. Harbor v2.14.3 ARM64 镜像构建指南(国内 / 纯 nerdctl 实战版)
 
   在 arm64 服务器上从官方源码构建 Harbor v2.14.3 镜像。本文以**只有 nerdctl + containerd + BuildKit、无
   Docker、且在国内网络**(如 K3s 节点)的环境为主线(场景 A),并附 arm64+Docker(场景 B)、x86 交叉构建(场景 C)。
