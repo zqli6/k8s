@@ -27,7 +27,7 @@
       #!/bin/bash
       ip a a 10.0.0.99/24 dev eth0 label eth0:1
       EOF
-      chmod +x /etc/rc.loccal
+      chmod +x /etc/rc.local
       systemctl enable rc-local
       systemctl start rc-local
       ```  
