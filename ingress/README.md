@@ -5,9 +5,15 @@
      <https://github.com/kubernetes/ingress-nginx/blob/main/deploy/static/provider/cloud/deploy.yaml>
 # 2. 部署ingress-nginx 使用 Lzq SWR 镜像加速yaml
 1. 部署ingress-nginx
+      1.1 x86部署  
       ```
       kubectl apply -f https://gitee.com/zqli6/k8s/raw/main/ingress/ingress-controller-lzq.yaml
-2. 优化
+      ```  
+      1.2 arm部署  
+      ```
+      kubectl apply -f https://gitee.com/zqli6/k8s/raw/main/ingress/ingress-controller-lzq-arm.yaml
+      ```
+2. 优化(arm版有调整，两个版本最好都看一下)
    1. 设置副本数为2，高可用
    2. 设置externalIPs `10.0.0.99`
       在k8s集群中的运行ingress-nginx-controller的Pod节点上添加externalIPs指定的IP地址  
