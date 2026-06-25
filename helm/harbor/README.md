@@ -207,19 +207,15 @@ json
 ```
 然后 systemctl restart docker。此方式会完全跳过 TLS 验证，存在中间人攻击风险，仅建议在测试环境临时使用。  
 
-  # 9. Harbor v2.14.3 ARM64 镜像构建指南
+  # Harbor v2.14.3 ARM64 镜像构建指南(国内 / 纯 nerdctl 实战版)
 
-  在服务器上从官方源码构建 Harbor v2.14.3 镜像。覆盖三种场景:
+  在 arm64 服务器上从官方源码构建 Harbor v2.14.3 镜像。本文以**只有 nerdctl + containerd + BuildKit、无
+  Docker、且在国内网络**(如 K3s 节点)的环境为主线(场景 A),并附 arm64+Docker(场景 B)、x86 交叉构建(场景 C)。
 
-  - **场景 A**:arm64 机器 + nerdctl(无 Docker,如 K3s 节点)
-  - **场景 B**:arm64 机器 + Docker
-  - **场景 C**:x86 机器交叉构建 arm64 镜像(QEMU 模拟)
-
-  > 背景:官方 Docker Hub 只提供 `goharbor/*:v2.14.3` 的 **amd64** 镜像,没有
-  arm64;社区也没有这个精确补丁版本。但官方源码自带 arm64 构建能力(`ARCH` 按宿主机架构自动识别),需自行构建。
+  > 背景:官方 Docker Hub 只提供 `goharbor/*:v2.14.3` 的 **amd64** 镜像,无 arm64;社区也无此精确补丁版本。官方源码自带
+  arm64 构建能力(`ARCH` 按宿主机自动识别),需自行构建。
   >
-  > **优先级**:原生 arm64 构建(场景 A/B)最稳;x86 交叉构建(场景 C)依赖 QEMU 模拟,慢且偶有兼容问题,仅在没有 arm64
-  机器时使用。
+  > **本文所有补丁/加速命令均经实测跑通**(arm64 + nerdctl v2.3.3 + containerd v2.2.3-k3s1 + buildkitd v0.31.0)。
 
   ---
 
@@ -227,24 +223,18 @@ json
 
   | 依赖 | 说明 |
   |---|---|
-  | 构建机 | arm64 原生(场景 A/B)或 x86_64(场景 C) |
-  | 运行时 | nerdctl + BuildKit(场景 A) 或 Docker ≥ 20.10(场景 B/C) |
-  | git / make / python3 | clone、构建驱动、`prepare` 阶段生成配置 |
-  | 磁盘空间 | 构建峰值约 15~25 GB,建议预留 30 GB 以上 |
+  | arm64 机器 | `uname -m` = `aarch64`,原生构建 |
+  | nerdctl + buildkitd | `nerdctl build` 依赖 buildkitd 运行 |
+  | git / make / python3 | clone、构建驱动、prepare 阶段 |
+  | 磁盘 | 构建峰值 15~25 GB,建议预留 30 GB+ |
 
-  环境自检:
+  自检:
 
   ```bash
-  uname -m                 # arm64 机器应为 aarch64;x86 机器为 x86_64
+  uname -m                 # aarch64
+  ps aux | grep buildkitd  # buildkitd 在跑
   git --version && make --version && python3 --version
-  df -h /                  # 确认磁盘余量
-
-  # 场景 A 额外确认 buildkitd 在跑
-  ps aux | grep buildkitd
-
-  # 场景 B/C 额外确认 docker
-  docker version
-  docker buildx ls         # 场景 C 需要 buildx,输出里应能看到 linux/arm64
+  df -h /
   ```
 
   ---
@@ -254,74 +244,179 @@ json
   ```bash
   git clone -b v2.14.3 --single-branch --depth 1 https://github.com/goharbor/harbor.git
   cd harbor
-
-  # GitHub 慢时改用 gitee 同步镜像(稍慢于 GitHub,但国内更稳)
+  # GitHub 慢时用 gitee 镜像:
   # git clone -b v2.14.3 --single-branch --depth 1 https://gitee.com/mirrors/harbor.git
   ```
 
-  参数含义:
-
   | 参数 | 作用 |
   |---|---|
-  | `-b v2.14.3` | 直接检出 `v2.14.3` 这个 tag(无需再单独 `git checkout`) |
-  | `--single-branch` | 只拉取该 tag 对应的单条分支历史,不下载其他分支 |
-  | `--depth 1` | 浅克隆,只取最新一次提交,不要完整历史,体积更小、速度更快 |
+  | `-b v2.14.3` | 直接检出 v2.14.3 tag |
+  | `--single-branch` | 只拉该分支历史 |
+  | `--depth 1` | 浅克隆,只取最新提交,更快更小 |
 
-  > 浅克隆下 `git describe --tags` 可能不显示 tag,确认版本可看 `cat VERSION`。
+  > 浅克隆下 `git describe` 可能不显示 tag,确认版本看 `cat VERSION`。
 
   ---
 
   ## 第 2 步:生成配置文件
 
-  `prepare` 阶段会读取此文件,缺失会报错。构建镜像不依赖其中 hostname/密码,保持默认即可。
-
   ```bash
   cp make/harbor.yml.tmpl make/harbor.yml
   ```
 
+  prepare 阶段会读它,缺失会报错;构建镜像不依赖其内容,保持默认即可。
+
   ---
 
-  ## 场景 A:arm64 + nerdctl(无 Docker)
+  ## 第 3 步:创建 docker → nerdctl 包装器(场景 A 核心)
 
-  ### A-1 关键前置:创建 docker → nerdctl 包装器
+  纯 nerdctl 环境有三个连环坑,用一个包装器一次性解决:
 
-  Harbor 的环境检查脚本 `make/checkenv.sh` **硬编码检查 `docker` 命令**,且要求版本 ≥ 20.10.10。它不认 `-e
-  DOCKERCMD=nerdctl`(那个变量只作用于后续构建命令,管不到这个前置检查),没有 `docker` 命令会直接报:
+  1. `make/checkenv.sh` **硬检查 `docker` 命令**(版本 ≥ 20.10.10),无 docker 直接报 `Need to install
+  docker(20.10.10+)`;
+  2. 构建中多处 `docker run` 临时工具容器(lint、证书生成、Go 编译),纯 nerdctl 默认 bridge 网络缺 CNI 插件,报 `needs
+  CNI plugin "bridge" ... /opt/cni/bin/bridge: no such file`;
+  3. 核心组件用 `docker run golang go build` 编译,容器内 `go` 走默认代理拉 module 会超时(`proxy.golang.org ... i/o
+  timeout`)。
 
-  ```
-  ✖ Need to install docker(20.10.10+) first and run this script again.
-  make: *** [Makefile:350：check_environment] 错误 1
-  ```
-
-  解法:做一个包装器,`--version` 伪造一个高版本骗过检查,其余命令全部透传给 nerdctl。注意不能简单 `ln -s`——nerdctl 的
-  `--version` 输出格式不同,版本号会被误判为过低。
+  包装器:`--version` 伪造高版本过检查;`run` 注入 `--network host` 绕 CNI、注入 `GOPROXY/GOSUMDB`
+  走国内代理;其余透传。(不能用 `ln -s`,nerdctl 的 `--version` 格式会被误判版本过低。)
 
   ```bash
   cat > /usr/local/bin/docker <<'EOF'
   #!/bin/bash
-  # checkenv.sh 只看 `docker --version` 的版本号,这里伪造一个高版本通过检查
+  # checkenv.sh 只看 `docker --version` 的版本号,伪造高版本通过检查
   if [ "$1" = "--version" ]; then
     echo "Docker version 25.0.0, build nerdctl-shim"
     exit 0
   fi
-  # 其余全部透传给 nerdctl
+  # docker run 注入:
+  #   --network host        绕开 nerdctl 默认 bridge(缺 CNI 插件)
+  #   GOPROXY/GOSUMDB        容器内 go build/install 走国内代理,避免超时
+  if [ "$1" = "run" ]; then
+    shift
+    exec nerdctl run --network host \
+      -e GOPROXY=https://goproxy.cn,direct \
+      -e GOSUMDB=off \
+      "$@"
+  fi
   exec nerdctl "$@"
   EOF
   chmod +x /usr/local/bin/docker
 
   # 验证
-  docker --version          # 应显示 Docker version 25.0.0, build nerdctl-shim
-  docker images | head      # 应等同 nerdctl images
-
-  # 确认 /usr/local/bin 在 PATH 中(一般默认在)
-  echo $PATH | tr ':' '\n' | grep '/usr/local/bin'
+  docker --version          # Docker version 25.0.0, build nerdctl-shim
+  docker images | head      # 等同 nerdctl images
+  echo $PATH | tr ':' '\n' | grep '/usr/local/bin'   # 确认在 PATH
   ```
 
-  > 构建全部完成后如需移除包装器:`rm /usr/local/bin/docker`
+  > 这些 `docker run` 都是用完即删的临时容器,共享主机网络无副作用。
+  > 全部构建完成后如需移除:`rm /usr/local/bin/docker`
 
-  ### A-2 编译(Go + 前端 portal)
+  ---
 
-  用容器编译模式,宿主机无需安装 Go / Node。`go：未找到命令` 只是警告,会自动 fallback 到容器编译。
+  ## 第 4 步:国内网络加速(三类下载,必做)
+
+  国内直连 github / proxy.golang.org / DockerHub / google 基本都超时。分三类处理。
+
+  ### 4.1 github 下载加速(Dockerfile 内的下载)
+
+  构建中 spectral 等组件的 Dockerfile 会从 `github.com` 下二进制,直连报 `curl: (52) Empty reply` 或 `(28) timed
+  out`。
+
+  先测最快镜像(可用性随时变,实测为准):
+
+  ```bash
+  URL="https://github.com/stoplightio/spectral/releases/download/v6.14.2/spectral-linux-arm64"
+  for m in "https://ghfast.top/" "https://gh-proxy.com/" "https://ghproxy.net/" \
+           "https://gh.llkk.cc/" "https://github.moeyy.xyz/" "https://gitproxy.click/" ; do
+    echo "==== $m ===="
+    curl -fsSL --connect-timeout 8 --max-time 60 -o /tmp/sp_test \
+      -w "  状态:%{http_code} 大小:%{size_download} 耗时:%{time_total}s 速度:%{speed_download}B/s\n" \
+      "${m}${URL}" 2>&1 || echo "  ✗ 失败"
+    rm -f /tmp/sp_test
+  done
+  ```
+
+  选 `状态:200`、`大小` 约 7400 万字节、`速度` 最高的。(实测 `gh.llkk.cc` ≈5MB/s、`gh-proxy.com` ≈4.9MB/s
+  较稳;直连超时。)
+
+  把所有 Dockerfile 里的 `https://github.com` 统一加前缀(幂等):
+
+  ```bash
+  FAST="https://gh.llkk.cc/"        # 换成你测最快的
+  grep -rln "https://github.com" --include="Dockerfile*" make tools   # 预览
+  grep -rl "https://github.com" --include="Dockerfile*" make tools | while read f; do
+    sed -i "s#https://github.com#${FAST}https://github.com#g" "$f"
+    sed -i "s#${FAST}${FAST}#${FAST}#g" "$f"
+  done
+  grep -rn "github.com" --include="Dockerfile*" make tools            # 复核
+  ```
+
+  > 只匹配带 `https://` 的下载 URL;Go import 路径(`github.com/...` 无协议头)不会被误伤。
+
+  ### 4.2 GOPROXY 注入(Dockerfile 内的 go 命令)
+
+  部分组件 Dockerfile 直接跑 `go install` / `go build`(swagger、mockery、trivy-adapter、exporter),需各自加 GOPROXY。
+
+  ```bash
+  # swagger / mockery:在 RUN go install 前插入 ENV GOPROXY
+  for f in tools/swagger/Dockerfile tools/mockery/Dockerfile; do
+    grep -q 'GOPROXY' "$f" || sed -i '/^RUN go install/i ENV GOPROXY=https://goproxy.cn,direct' "$f"
+  done
+
+  # trivy-adapter:在 export 行追加 GOPROXY + GOSUMDB
+  sed -i 's|GO111MODULE=on CGO_ENABLED=0|GO111MODULE=on CGO_ENABLED=0 GOPROXY=https://goproxy.cn,direct
+  GOSUMDB=off|' \
+    make/photon/trivy-adapter/Dockerfile.binary
+  ```
+
+  ### 4.3 修复 exporter 写死的架构 + 加 GOPROXY(arm64 关键)
+
+  `make/photon/exporter/Dockerfile` **写死了 `ENV GOARCH=amd64`**,在 arm64 上会交叉编译出 amd64 二进制,导致 exporter
+  容器 `exec format error` 起不来。必须改成 arm64。
+
+  ```bash
+  sed -i 's#ENV GOARCH=amd64#ENV GOARCH=arm64#' make/photon/exporter/Dockerfile
+  sed -i '/^ENV GOOS=linux/a ENV GOPROXY=https://goproxy.cn,direct\nENV GOSUMDB=off' \
+    make/photon/exporter/Dockerfile
+  ```
+
+  复核三处补丁:
+
+  ```bash
+  grep -n "GOPROXY\|go install" tools/swagger/Dockerfile tools/mockery/Dockerfile
+  grep -n "GOPROXY\|GOOS" make/photon/trivy-adapter/Dockerfile.binary
+  grep -n "GOARCH\|GOPROXY\|GOSUMDB\|GOOS" make/photon/exporter/Dockerfile   # GOARCH 应为 arm64
+  ```
+
+  ### 4.4 预拉 golang 镜像到 containerd(compile_core 必做)
+
+  核心组件用 `docker run golang go build` 编译 → 经包装器走 `nerdctl run`,它用 **containerd 镜像存储,与 buildkit
+  构建缓存相互独立**,会去 DockerHub 直连拉 golang 并超时(`registry-1.docker.io ... i/o timeout`)。
+
+  用国内 DockerHub mirror 预拉,再重命名为 Makefile 期望的裸名(版本见 Makefile `GOBUILDIMAGE=`,v2.14.3 为
+  `golang:1.24.13`):
+
+  ```bash
+  # 测可用 mirror
+  for m in docker.m.daocloud.io dockerproxy.net docker.1ms.run hub.rat.dev docker.1panel.live ; do
+    echo "==== $m ===="
+    timeout 25 nerdctl pull ${m}/library/golang:1.24.13 && echo "✅ $m" && break || echo "✗ $m"
+  done
+
+  # 用成功的 mirror 重命名(实测 docker.m.daocloud.io 可用)
+  MIRROR=docker.m.daocloud.io
+  nerdctl tag ${MIRROR}/library/golang:1.24.13 golang:1.24.13
+  nerdctl tag ${MIRROR}/library/golang:1.24.13 docker.io/library/golang:1.24.13
+  nerdctl images | grep golang
+  ```
+
+  ---
+
+  ## 第 5 步:编译(Go + 前端 portal)
+
+  容器编译模式,宿主机无需 Go/Node(`go：未找到命令` 仅警告,会自动 fallback 到容器编译)。
 
   ```bash
   make compile \
@@ -329,7 +424,22 @@ json
     -e PULL_BASE_FROM_DOCKERHUB=true
   ```
 
-  ### A-3 构建镜像
+  过程会:lint_apis(spectral)→ gen_apis(swagger 生成 API 代码)→ compile_core/jobservice/registryctl(容器内 Go 编译)。
+
+  > `make compile` 输出大量 swagger lint warning(如 `295 problems (0 errors, 295 warnings)`)是**正常**的——Harbor
+  官方 API 定义自带的风格提示,只要 **`0 errors`** 即通过。
+
+  **验证编译成功**:
+
+  ```bash
+  echo "退出码: $?"                          # 0 = 成功
+  ls -lh make/photon/core/harbor_core        # 二进制已生成(约 70M)
+  file make/photon/core/harbor_core          # 应含 ARM aarch64(确认非 amd64)
+  ```
+
+  ---
+
+  ## 第 6 步:构建镜像
 
   ```bash
   make build \
@@ -345,104 +455,51 @@ json
 
   | 参数 | 作用 |
   |---|---|
-  | `COMPILETAG=compile_golangimage` | 在 golang/node 容器内编译,宿主机零工具链依赖 |
-  | `VERSIONTAG=v2.14.3` | 镜像 tag 设为 v2.14.3 |
+  | `VERSIONTAG=v2.14.3` | 镜像 tag |
   | `BUILD_BASE=true` | 构建 photon base 层 |
-  | `PULL_BASE_FROM_DOCKERHUB=true` | 拉官方 base 镜像省时间;不稳可改 `false` 自建(更慢) |
   | `TRIVYFLAG=true` | 构建 trivy-adapter 扫描组件 |
-  | `NOTARYFLAG=false` / `CHARTFLAG=false` | 不构建 notary / chartmuseum(按需) |
+  | `NOTARYFLAG=false` / `CHARTFLAG=false` | 不构建 notary / chartmuseum |
   | `GEN_TLS=true` | 生成 TLS 证书 |
 
-  > 包装器已把 `docker` 指向 nerdctl,所以这里不必再传 `DOCKERCMD=nerdctl`(传了也无害)。
+  ### ⚠️ 已知后续坑:build 阶段从 github/google 下载的 make 变量
 
-  ---
+  build 会用 `-e` 传入若干**外部下载地址**(不在 Dockerfile 里,4.1 的 sed 覆盖不到),国内大概率超时:
 
-  ## 场景 B:arm64 + Docker
-
-  和场景 A 一致,但**不需要包装器**(本机有真 docker),也不必传 `DOCKERCMD`。
-
-  ### B-1 编译
-
-  ```bash
-  make compile \
-    -e COMPILETAG=compile_golangimage \
-    -e PULL_BASE_FROM_DOCKERHUB=true
+  ```
+  TRIVY_DOWNLOAD_URL          = https://github.com/aquasecurity/trivy/.../trivy_0.69.3_Linux-64bit.tar.gz
+  TRIVY_ADAPTER_DOWNLOAD_URL  = https://github.com/goharbor/harbor-scanner-trivy/.../v0.35.1.tar.gz
+  DISTRIBUTION_SRC            = https://github.com/goharbor/distribution.git
+  REGISTRYURL                 = https://storage.googleapis.com/harbor-builds/.../registry   (google,基本不通)
   ```
 
-  ### B-2 构建镜像
+  若卡在这些,用 `-e` 覆盖成加速地址重跑 build(github 加前缀,google 的 registry 需另找镜像或自建)。例如:
 
   ```bash
   make build \
-    -e COMPILETAG=compile_golangimage \
-    -e VERSIONTAG=v2.14.3 \
-    -e PULL_BASE_FROM_DOCKERHUB=true \
-    -e BUILD_BASE=true \
-    -e TRIVYFLAG=true \
-    -e NOTARYFLAG=false \
-    -e CHARTFLAG=false \
-    -e GEN_TLS=true
+    -e COMPILETAG=compile_golangimage -e VERSIONTAG=v2.14.3 \
+    -e PULL_BASE_FROM_DOCKERHUB=true -e BUILD_BASE=true \
+    -e TRIVYFLAG=true -e NOTARYFLAG=false -e CHARTFLAG=false -e GEN_TLS=true \
+    -e TRIVY_DOWNLOAD_URL=https://gh.llkk.cc/https://github.com/aquasecurity/trivy/releases/download/v0.69.3/trivy_0
+  .69.3_Linux-ARM64.tar.gz \
+    -e TRIVY_ADAPTER_DOWNLOAD_URL=https://gh.llkk.cc/https://github.com/goharbor/harbor-scanner-trivy/archive/refs/t
+  ags/v0.35.1.tar.gz \
+    -e DISTRIBUTION_SRC=https://gh.llkk.cc/https://github.com/goharbor/distribution.git
   ```
 
-  > 若宿主机已装好匹配版本的 Go/Node,可去掉 `COMPILETAG=compile_golangimage` 走默认的
-  `compile_normal`(用本机工具链,编译更快)。版本要求以源码 `go.mod` 为准。
+  > **注意 trivy 架构**:默认 `TRIVY_DOWNLOAD_URL` 是 `Linux-64bit`(amd64)。arm64 须改用 `Linux-ARM64`
+  包(如上),否则装进去的是 x86 trivy,扫描时 `exec format error`。具体文件名以 [trivy
+  releases](https://github.com/aquasecurity/trivy/releases) 为准。
+  > base 镜像(photon、各 `harbor-*-base`)超时时,同 4.4 用 `docker.m.daocloud.io` 预拉再 tag 成裸名。
 
   ---
 
-  ## 场景 C:x86 机器交叉构建 arm64 镜像(QEMU 模拟)
-
-  在 x86_64 机器上构建 arm64 镜像,核心是让 x86 内核能运行 arm64 指令——通过 **QEMU binfmt** 模拟,再让构建流程全程以 arm64
-  架构运行。**比原生慢数倍,仅在无 arm64 机器时使用。**
-
-  ### C-1 注册 QEMU binfmt(让内核识别 arm64 二进制)
+  ## 第 7 步:查看产物
 
   ```bash
-  # 一次性注册多架构模拟支持(重启后需重新执行,除非做了持久化)
-  docker run --privileged --rm tonistiigi/binfmt --install arm64
-
-  # 验证 arm64 已注册
-  docker run --privileged --rm tonistiigi/binfmt
-  ```
-
-  ### C-2 创建支持多架构的 buildx builder
-
-  ```bash
-  docker buildx create --name armbuilder --use --bootstrap
-  docker buildx ls          # 确认 armbuilder 支持 linux/arm64
-  ```
-
-  ### C-3 进入 arm64 模拟环境再构建(推荐做法)
-
-  Harbor 的 Makefile 默认按宿主机 `uname -m` 决定架构,x86 机器直接跑会产出 amd64。最可靠的做法是**先进入一个 arm64
-  容器**(经 QEMU 模拟,内部 `uname -m` 报告 `aarch64`),在其中执行第 1~2 步和编译/构建,整套流程自然按 arm64 走:
-
-  ```bash
-  # 启动一个 arm64 的构建环境容器(挂载源码与运行时)
-  docker run --privileged --platform linux/arm64 -it \
-    -v /var/run/docker.sock:/var/run/docker.sock \
-    -v "$PWD":/workspace -w /workspace \
-    arm64v8/golang:1.25 bash
-
-  # 容器内确认架构为 aarch64,再执行第 1~2 步、随后按场景 B 的 compile/build 流程
-  uname -m   # 期望 aarch64
-  ```
-
-  > 替代方案(buildx 多平台):对单个 Dockerfile 可用 `docker buildx build --platform linux/arm64 --load ...`,但 Harbor
-  多组件 Makefile 不直接支持 `--platform` 透传,需逐组件改造,工作量大,不推荐。
-  >
-  > **务必先给 Docker 配国内镜像 mirror**,否则 QEMU 环境下拉 base 镜像会非常慢。
-
-  ---
-
-  ## 第 3 步(通用):查看构建产物
-
-  ```bash
-  # 场景 A
   nerdctl images | grep goharbor
-  # 场景 B/C
-  docker images | grep goharbor
   ```
 
-  典型产物(以实际输出为准):
+  典型产物(以实际为准):
 
   ```
   goharbor/harbor-core            v2.14.3
@@ -457,58 +514,94 @@ json
   goharbor/trivy-adapter-photon   v2.14.3
   ```
 
-  > 单架构构建产物为 **单 manifest(arm64)**,非多架构 index。可用 `nerdctl manifest inspect <镜像>` 或 `docker manifest
-  inspect <镜像>` 确认 `mediaType`。
+  > 单架构构建产物为 **单 manifest(arm64)**,非多架构 index。可用 `nerdctl manifest inspect <镜像>` 看 `mediaType`
+  确认。
 
   ---
 
-  ## 第 4 步(通用):推送到镜像仓库(SWR)
-
-  > 场景 A 把 `docker` 换成 `nerdctl`(或直接用包装器,`docker` 已指向 nerdctl),其余相同。
+  ## 第 8 步:推送到镜像仓库(SWR)
 
   ```bash
-  docker login swr.cn-southwest-2.myhuaweicloud.com
+  nerdctl login swr.cn-southwest-2.myhuaweicloud.com
 
   # harbor- 前缀组件
   for name in core jobservice portal db registryctl exporter; do
-    docker tag goharbor/harbor-${name}:v2.14.3 \
+    nerdctl tag goharbor/harbor-${name}:v2.14.3 \
       swr.cn-southwest-2.myhuaweicloud.com/zqli/goharbor/harbor-${name}:v2.14.3-arm
-    docker push swr.cn-southwest-2.myhuaweicloud.com/zqli/goharbor/harbor-${name}:v2.14.3-arm
+    nerdctl push swr.cn-southwest-2.myhuaweicloud.com/zqli/goharbor/harbor-${name}:v2.14.3-arm
   done
 
   # 无 harbor- 前缀组件
   for name in registry-photon nginx-photon redis-photon trivy-adapter-photon; do
-    docker tag goharbor/${name}:v2.14.3 \
+    nerdctl tag goharbor/${name}:v2.14.3 \
       swr.cn-southwest-2.myhuaweicloud.com/zqli/goharbor/${name}:v2.14.3-arm
-    docker push swr.cn-southwest-2.myhuaweicloud.com/zqli/goharbor/${name}:v2.14.3-arm
+    nerdctl push swr.cn-southwest-2.myhuaweicloud.com/zqli/goharbor/${name}:v2.14.3-arm
   done
   ```
 
   ---
 
-  ## 第 5 步(通用):清理构建缓存
+  ## 第 9 步:清理构建缓存
 
   ```bash
-  # 场景 A
   nerdctl builder prune -a && nerdctl image prune
-
-  # 场景 B/C
-  docker builder prune -a && docker image prune
-  docker buildx prune -a        # 场景 C 额外清 buildx 缓存
-
-  df -h /                       # 确认空间回收
+  df -h /
   ```
 
   ---
 
-  ## 常见问题
+  ## 场景 B:arm64 + Docker
 
-  - **`Need to install docker(20.10.10+)`**(场景 A):见 A-1,checkenv.sh 硬检查 `docker` 命令,用包装器解决。
-  - **`go：未找到命令`**:仅警告,容器编译模式会自动 fallback,无需在宿主机装 Go。
-  - **拉基础镜像超时**:为 BuildKit / containerd / Docker 配置国内 mirror,或将 `PULL_BASE_FROM_DOCKERHUB` 改为 `false`
-  从源码自建 base。
-  - **nerdctl 报 `unknown flag`**(场景 A):Makefile 个别 `docker run` 可能带 nerdctl 不支持的参数,按提示微调对应 flag。
-  - **K3s 节点上 nerdctl 镜像看不到**:nerdctl 默认 `default` namespace,K3s 用 `k8s.io`,二者隔离。用 `nerdctl images`
-  查看,而非 `crictl images`。
-  - **构建出来是 amd64 而非 arm64**(场景 C):说明没跑在 arm64 模拟环境里,参考 C-3 先进入 arm64 容器再构建。
+  与场景 A 一致,但**无需第 3 步包装器**、无需第 4 步的包装器注入(本机有真 docker);github / GOPROXY / mirror
+  加速在国内仍建议做(4.1~4.4 的 Dockerfile 补丁、exporter 架构修复同样适用)。命令去掉 `DOCKERCMD`
+  相关即可。若宿主机已装好匹配版本 Go/Node,可去掉 `COMPILETAG=compile_golangimage` 走更快的本机 `compile_normal`。
 
+  ## 场景 C:x86 交叉构建 arm64(QEMU,慢,仅无 arm64 机器时用)
+
+  ```bash
+  docker run --privileged --rm tonistiigi/binfmt --install arm64   # 注册 QEMU(重启失效)
+  docker run --privileged --rm tonistiigi/binfmt                   # 验证 arm64 已注册
+  ```
+
+  Harbor Makefile 按宿主机 `uname -m` 定架构,x86 直接跑会产出 amd64。最可靠做法:**先进入 arm64 容器**(QEMU 模拟,内部
+  `uname -m`=aarch64),在其中执行第 1~6 步:
+
+  ```bash
+  docker run --privileged --platform linux/arm64 -it \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v "$PWD":/workspace -w /workspace arm64v8/golang:1.24 bash
+  uname -m   # 期望 aarch64
+  ```
+
+  > 务必先给 Docker 配国内 mirror,否则 QEMU 下拉镜像极慢。
+
+  ---
+
+  ## 常见问题速查
+
+  | 报错 | 原因 / 解决 |
+  |---|---|
+  | `Need to install docker(20.10.10+)` | checkenv.sh 硬查 docker;见第 3 步包装器 |
+  | `go：未找到命令` | 仅警告,容器编译模式自动 fallback,无需装 Go |
+  | `needs CNI plugin "bridge" ... /opt/cni/bin/bridge` | nerdctl 默认 bridge 缺 CNI;包装器对 run 注入 `--network
+  host` 解决 |
+  | `curl: (52) Empty reply` / `(28) timed out`(spectral 等) | github 直连超时;见 4.1 加速 |
+  | `proxy.golang.org ... i/o timeout`(go install) | GOPROXY 未注入;见 4.2 / 包装器 GOPROXY |
+  | `registry-1.docker.io ... i/o timeout`(compile_core) | nerdctl run 的 containerd 存储无 golang;见 4.4 预拉重命名
+  |
+  | swagger lint `0 errors, NNN warnings` | 正常,官方 API 定义风格提示,无需处理 |
+  | exporter 容器 `exec format error` | Dockerfile 写死 `GOARCH=amd64`;见 4.3 改 arm64 |
+  | build 阶段 trivy/distribution/registry 下载超时 | 这些是 make `-e` 变量;见第 6 步用 `-e` 覆盖为加速地址 |
+  | trivy `exec format error` | `TRIVY_DOWNLOAD_URL` 默认 amd64;改用 `Linux-ARM64` 包 |
+  | K3s 节点 `nerdctl images` 看不到集群镜像 | nerdctl 默认 `default` namespace,K3s 用 `k8s.io`,二者隔离,正常 |
+
+  ---
+
+  ## 关键认知小结
+
+  - **buildkit 构建缓存 ≠ containerd 镜像存储**:`docker build` 走 buildkit,`docker run` 走 containerd,两套独立。所以
+  `nerdctl run` 用的 golang 镜像要单独预拉(4.4)。
+  - **三类下载源**:Dockerfile 内 `github.com`(4.1)、Dockerfile 内 `go install`(4.2)、make `-e` 传入的外部 URL(第 6
+  步)——加速手段各不同,别漏。
+  - **arm64 架构陷阱**:exporter 的 `GOARCH=amd64`(4.3)和 trivy 的 `Linux-64bit`(第 6 步)是两处写死 amd64
+  的地方,arm64 必须改,否则镜像能构建但运行时 `exec format error`。
