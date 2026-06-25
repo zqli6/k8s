@@ -31,7 +31,6 @@ helm install myharbor -f harbor-values_lzq.yml harbor/harbor -n harbor --create-
 4. 官方
 ```
 # 导出values.yaml定制参数
-``` 
 helm show values harbor/harbor > harbor-values.yaml
 ```
 helm install myharbor -f harbor-values.yml harbor/harbor -n harbor --create-namespace
