@@ -4,25 +4,35 @@
 # 3. 部署ingress
    详见：[k8s/ingress](https://gitee.com/zqli6/k8s/blob/main/ingress/README.md)
 # 4. 安装 helm
-# 5. 安装harbor
-1. 添加harbor helm仓库 或者 直接使用文件harbor-1.18.3.tgz
+# 5. 安装harbor   
+1. x86 SWR 镜像加速版
+```
+# 使用下载的chart包
+wget https://gitee.com/zqli6/k8s/raw/main/helm/harbor/harbor-values-lzq.yml  \
+&& wget https://gitee.com/zqli6/k8s/raw/main/helm/harbor/harbor-1.18.3.tgz \
+&& helm install myharbor -f harbor-values-lzq.yml harbor-1.18.3.tgz -n harbor --create-namespace
+```
+2. arm SWR 镜像加速版
+```
+# 使用下载的chart包
+wget https://gitee.com/zqli6/k8s/raw/main/helm/harbor/harbor-values-arm-lzq.yml  \
+&& wget https://gitee.com/zqli6/k8s/raw/main/helm/harbor/harbor-1.18.3.tgz \
+&& helm install myharbor -f harbor-values-arm-lzq.yml harbor-1.18.3.tgz -n harbor --create-namespace
+```
+
+3. 使用helm仓库
 ```
 helm repo add harbor https://helm.goharbor.io
 ```
 ```
-wget https://gitee.com/zqli6/k8s/raw/main/helm/harbor/harbor-1.18.3.tgz
-```
-2. wget 下载yaml文件  
-   1. SWR 镜像加速版
-```
-wget https://gitee.com/zqli6/k8s/raw/main/helm/harbor/harbor-values_lzq.yml
-```
-```
 helm install myharbor -f harbor-values_lzq.yml harbor/harbor -n harbor --create-namespace
-或
-helm install myharbor -f harbor-values_lzq.yml harbor-1.18.3.tgz -n harbor --create-namespace
 ```
-   2. 官方  
+
+4. 官方
+```
+# 导出values.yaml定制参数
+``` 
+helm show values harbor/harbor > harbor-values.yaml
 ```
 helm install myharbor -f harbor-values.yml harbor/harbor -n harbor --create-namespace
 ```
