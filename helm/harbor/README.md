@@ -1,8 +1,8 @@
 # 1. 安装NFS配置共享目录/data/sc-nfs
 # 2. 部署StorageClass
-   详见：k8s/StorageClass/nfs-subdir-external-provisioner
+   详见：[k8s/StorageClass/nfs-subdir-external-provisioner](https://gitee.com/zqli6/k8s/tree/main/StorageClass/nfs-subdir-external-provisioner)
 # 3. 部署ingress
-   详见：k8s/ingress
+   详见：[k8s/ingress](https://gitee.com/zqli6/k8s/blob/main/ingress/README.md)
 # 4. 安装 helm
 # 5. 安装harbor
 1. 添加harbor helm仓库 或者 直接使用文件harbor-1.18.3.tgz
