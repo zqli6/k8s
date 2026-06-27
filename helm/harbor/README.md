@@ -493,7 +493,7 @@ kubectl logs -n harbor myharbor-database-0 --tail=20 | grep -i "error\|fatal\|cr
 ```
 kubectl get ingress -n harbor
 ```
->▎ 用 HOSTS 列里的域名，以 https 访问，例如：  
+> 用 HOSTS 列里的域名，以 https 访问，例如：  
 https://ict-harbor-pro-registry-huabei2.crs.ctyun.cn  
 若本机无 DNS 解析，在本机 hosts 文件加一行：<ingress的ADDRESS> <HOSTS域名>  
 首次访问提示证书不安全（自签证书），点"高级 → 继续访问"即可。  
@@ -507,7 +507,7 @@ https://ict-harbor-pro-registry-huabei2.crs.ctyun.cn
   解决（按顺序，通常第1步即可）：  
 
  > 1. 在登录页按 Ctrl+Shift+R 强制刷新，刷新后立即输入账号密码登录，不要停留太久。  
-  2. 若仍报错，清掉该站点残留 cookie：F12 → Application → Cookies → 选中该域名 → 全部删除，然后 Ctrl+Shift+R 重新加载再登录。  
-  3. 最彻底：关闭该站点所有标签页，开一个全新无痕窗口，直接访问 https 域名，首次加载即登录。  
+ >  2. 若仍报错，清掉该站点残留 cookie：F12 → Application → Cookies → 选中该域名 → 全部删除，然后 Ctrl+Shift+R 重新加载再登录。  
+ >  3. 最彻底：关闭该站点所有标签页，开一个全新无痕窗口，直接访问 https 域名，首次加载即登录。  
 
 
