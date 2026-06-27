@@ -253,141 +253,196 @@ Harbor DB 使用 NFS 存储，PostgreSQL 在 NFS 上高并发写入时 fsync 超
 
 ## 9.2、备份
 ### 9.2.1 设置备份目录
+
 ```bash
 BACKUP_DIR=/home/lzq/harbor/backup
 DATE=$(date +%Y%m%d%H%M)
 mkdir -p ${BACKUP_DIR}
 ```
+
 ### 9.2.2 备份 DB
+
 ```bash
 kubectl exec -n harbor myharbor-database-0 -- pg_dumpall -U postgres \
   > ${BACKUP_DIR}/harbor-db-backup-${DATE}.sql
 echo "DB备份完成: $(wc -l < ${BACKUP_DIR}/harbor-db-backup-${DATE}.sql) 行"
 ```
 
-### 9.2.3 备份 registry layer  
-目录结构
-```
-kubectl exec -n harbor harbor-registry-7b96dd8cf8-25xnq -c registry -- tree /storage/
-/storage
-└── docker
-    └── registry
-        └── v2
-            ├── blobs
-            │   └── sha256
-            │       ├── 00
-            │       ├── ...
-            │       └── fb                 # 此处省略了大量中间哈希前缀目录
-            └── repositories
-                └── ict                    # 项目/命名空间
-```
-#### 9.2.3.1 方法一：从`registry`拷贝  
-```
-kubectl exec -n harbor `kubectl get pod -n harbor | grep registry | cut -d " " -f1` \
--c registry -- cp /storage/docker ${BACKUP_DIR}/harbor-registry-backup/docker
-```
-
-#### 9.2.3.2 方法二：从`NFS`直接拷贝
-```
-cp -r /data/nfs/harbor-myharbor-registry/docker ${BACKUP_DIR}/harbor-registry-backup/docker
-echo "Registry备份完成: $(du -sh ${BACKUP_DIR}/harbor-registry-backup/ | awk '{print $1}')"
-```
-
----
-
-## 9.3、旧应用停机
+校验关键表是否有数据（`pg_dumpall` 默认输出是 `COPY ... FROM stdin;` 格式而非 `INSERT INTO`，需同时匹配两种格式；`role_permission`/`permission_policy` 是现代 Harbor 版本的遗留空表，权限判断已改为读取代码内硬编码的 `PoliciesMap`，不依赖这两张表，所以不纳入校验）：
 
 ```bash
-# Scale down 所有 Harbor 组件
+for TABLE in harbor_user project role; do
+    COUNT=$(grep -E -c "INSERT INTO public.${TABLE} |COPY public.${TABLE} " ${BACKUP_DIR}/harbor-db-backup-${DATE}.sql)
+    echo "  表 ${TABLE}: ${COUNT} 处匹配（INSERT 或 COPY 起始行）"
+    if [ "$COUNT" -eq 0 ]; then
+        echo "  警告: ${TABLE} 没有数据，备份可能不完整，请先排查源库再继续！"
+    fi
+done
+
+echo "=== 校验数据行数（更准确） ==="
+for TABLE in harbor_user project role; do
+    LINES=$(sed -n "/^COPY public.${TABLE} /,/^\\\\.\$/p" ${BACKUP_DIR}/harbor-db-backup-${DATE}.sql | wc -l)
+    echo "  表 ${TABLE}: 约 $((LINES - 2)) 行数据"
+done
+```
+
+### 9.2.3 备份 registry layer
+
+查看目录结构：
+
+```bash
+kubectl exec -n harbor $(kubectl get pod -n harbor | grep registry | awk '{print $1}') \
+  -c registry -- tree /storage/
+```
+
+从 registry 容器拷贝出来（注意：拷贝耗时较久，必须等命令彻底返回到命令提示符后才能做下面的校验，否则数字是中途的过渡值）：
+
+```bash
+REGISTRY_POD=$(kubectl get pod -n harbor | grep registry | awk '{print $1}')
+
+kubectl cp -n harbor ${REGISTRY_POD}:/storage/docker \
+  ${BACKUP_DIR}/harbor-registry-backup/docker -c registry
+```
+
+校验备份内容：
+
+```bash
+echo "=== 校验 registry 备份内容 ==="
+echo "Repository 数量: $(find ${BACKUP_DIR}/harbor-registry-backup/docker/registry/v2/repositories -maxdepth 2 -mindepth 2 -type d 2>/dev/null | wc -l)"
+echo "Blob 数量: $(find ${BACKUP_DIR}/harbor-registry-backup/docker/registry/v2/blobs -name "data" 2>/dev/null | wc -l)"
+```
+
+### 9.3 旧应用停机
+
+```bash
 kubectl scale deployment -n harbor --all --replicas=0
 kubectl scale statefulset -n harbor --all --replicas=0
-
-# 确认全部停止
 kubectl get pod -n harbor
 # 预期输出: No resources found in harbor namespace.
 
-# 删除所有旧 PVC（NFS）
 kubectl delete pvc -n harbor --all
 kubectl get pvc -n harbor
 # 预期输出: No resources found in harbor namespace.
 
-# 卸载 Harbor
 helm uninstall myharbor -n harbor
 ```
 
----
+> 这一步会卸载整个 release，9.4 重新 helm install 时所有组件（包括 portal）会一并拉起，不存在漏启动风险。
 
-## 9.4、新应用开机
+### 9.4 新应用开机
 
 ```bash
-# 修改 values storageClass 为 topolvm-ssd
 sed -i 's/storageClass: "nfs-client"/storageClass: "topolvm-provisioner"/g' \
   /home/lzq/harbor/harbor-values-topolvm-arm-lzq.yml
 
-# 确认修改
 grep "storageClass" /home/lzq/harbor/harbor-values-topolvm-arm-lzq.yml | grep -v "#"
 
-# 重新安装 Harbor
 helm install myharbor /home/lzq/harbor/harbor-1.18.3.tgz \
   -n harbor \
   -f /home/lzq/harbor/harbor-values-topolvm-arm-lzq.yml \
   --wait --timeout 10m
 
-# 确认所有 pod Running
 kubectl get pod -n harbor
 ```
 
----
+### 9.5 还原
 
-## 9.5、还原
-### 5.1 还原 DB
+#### 9.5.1 还原 DB
 
 ```bash
-# 停掉 core 和 jobservice 断开 DB 连接
-kubectl scale deployment -n harbor harbor-core harbor-jobservice --replicas=0
+kubectl scale deployment -n harbor --all --replicas=0
+kubectl scale statefulset -n harbor myharbor-trivy --replicas=0
 kubectl get pod -n harbor
+```
 
-# 清空 DB 重新导入（避免 duplicate key 冲突）
-kubectl exec -n harbor harbor-database-0 -- psql -U postgres -c "DROP DATABASE registry;"
-kubectl exec -n harbor harbor-database-0 -- psql -U postgres -c "CREATE DATABASE registry OWNER postgres;"
+> 注意：上面这条 `--all --replicas=0` 会把 **myharbor-core / myharbor-jobservice / myharbor-portal / myharbor-registry** 全部停掉。
+> 后面恢复时必须把这四个全部重新拉起来，少一个都会导致访问异常（例如漏了 portal 会导致 UI 报 "no available server"）。
 
-# 恢复备份
-kubectl exec -i -n harbor harbor-database-0 -- psql -U postgres \
-  < /home/lzq/harbor/backup/harbor-db-backup-${DATE}.sql
+```bash
+kubectl exec -n harbor myharbor-database-0 -- psql -U postgres -c "
+SELECT pg_terminate_backend(pid)
+FROM pg_stat_activity
+WHERE datname = 'registry' AND pid <> pg_backend_pid();
+"
 
-# 启动 core 和 jobservice
-kubectl scale deployment -n harbor harbor-core harbor-jobservice --replicas=1
+kubectl exec -n harbor myharbor-database-0 -- psql -U postgres -c "DROP DATABASE registry;"
+kubectl exec -n harbor myharbor-database-0 -- psql -U postgres -c "CREATE DATABASE registry OWNER postgres;"
+
+kubectl exec -i -n harbor myharbor-database-0 -- psql -U postgres \
+  < ${BACKUP_DIR}/harbor-db-backup-${DATE}.sql
+```
+
+> 还原过程中可能会看到 `ERROR: role "postgres" already exists` 和 `ERROR: database "registry" already exists`，
+> 这是因为备份文件本身包含了重建角色/数据库的语句，而这两个对象已经存在（前两条命令刚建过）。
+> 这类报错不会中断导入，后续的 `CREATE TABLE`/`COPY`/`CREATE INDEX` 等仍会继续执行，属于预期噪音，不代表失败。
+
+启动 core / jobservice / registry / **portal**（四个一起，缺一个都会出问题）/ trivy：
+
+```bash
+kubectl scale deployment -n harbor myharbor-core myharbor-jobservice myharbor-registry myharbor-portal --replicas=1
+kubectl scale statefulset -n harbor myharbor-trivy --replicas=1
 kubectl get pod -n harbor -w
 ```
 
-### 5.2 还原 registry layer
+等所有 pod 变为 Running 且无持续重启后 Ctrl+C 退出，再执行还原后校验（不再校验 `permission_policy`/`role_permission`，这两张表为遗留空表，权限判断不依赖它们）：
 
 ```bash
-# 获取 registry pod 名称
+echo "=== 还原后校验 ==="
+kubectl exec -it -n harbor myharbor-database-0 -- psql -U postgres -d registry -c "SELECT count(*) FROM project;"
+kubectl exec -it -n harbor myharbor-database-0 -- psql -U postgres -d registry -c "SELECT count(*) FROM harbor_user;"
+# 上面两个数字都不应该是 0，且应与备份时记录的预期数量一致，确认无误后才继续 9.5.2
+```
+
+#### 9.5.2 还原 registry layer
+
+```bash
 REGISTRY_POD=$(kubectl get pod -n harbor -l component=registry \
   -o jsonpath='{.items[0].metadata.name}')
-
-# 拷贝备份数据到 pod
-kubectl cp /home/lzq/harbor/backup/harbor-registry-backup/docker \
-  harbor/${REGISTRY_POD}:/storage/docker -c registry
-
-# 确认数据路径正确（必须在 /storage/docker/registry/v2/ 下）
-kubectl exec -n harbor ${REGISTRY_POD} -c registry -- ls /storage/
-# 预期输出: docker
-
-# 如果数据在错误路径（如 /storage/harbor-myharbor-registry/docker/）需要移动
-kubectl exec -n harbor ${REGISTRY_POD} -c registry -- \
-  mv /storage/harbor-myharbor-registry/docker/ /storage/
-kubectl exec -n harbor ${REGISTRY_POD} -c registry -- \
-  rm -rf /storage/harbor-myharbor-registry/
+echo $REGISTRY_POD
 ```
 
-### 5.3 重启生效
+> 如果输出为空，说明 myharbor-registry 还没起来，先执行
+> `kubectl scale deployment -n harbor myharbor-registry --replicas=1`
+> 等它 Running 后再重新执行上面这条获取 pod 名的命令。
 
 ```bash
-kubectl rollout restart deployment -n harbor harbor-core
-kubectl rollout restart deployment -n harbor harbor-registry
-kubectl get pod -n harbor -w
+kubectl cp ${BACKUP_DIR}/harbor-registry-backup/docker \
+  harbor/${REGISTRY_POD}:/storage/docker -c registry
+
+kubectl exec -n harbor ${REGISTRY_POD} -c registry -- ls /storage/
+# 预期输出: docker
+```
+
+如果数据落在了错误路径，先确认实际路径再移动（按 `ls /storage/` 实际看到的路径调整，不要直接套用固定命令）：
+
+```bash
+kubectl exec -n harbor ${REGISTRY_POD} -c registry -- mv /storage/<错误路径>/docker /storage/
+kubectl exec -n harbor ${REGISTRY_POD} -c registry -- rm -rf /storage/<错误路径>
+```
+
+还原后校验 repository 数量是否与备份时记录的一致：
+
+```bash
+echo "=== registry layer 还原后校验 ==="
+kubectl exec -n harbor ${REGISTRY_POD} -c registry -- \
+  find /storage/docker/registry/v2/repositories -maxdepth 2 -mindepth 2 -type d | wc -l
+# 与 9.2.3 备份时记录的 repository 数量对比，确认一致
+```
+
+#### 9.5.3 收尾确认
+
+```bash
+kubectl get pod -n harbor
+```
+
+> 此时应能看到 myharbor-core / myharbor-database-0 / myharbor-jobservice /
+> myharbor-portal / myharbor-redis-0 / myharbor-registry / myharbor-trivy-0
+> 共 7 个组件全部 Running，缺任何一个都需要单独 `scale --replicas=1` 补上。
+
+```bash
+kubectl get ingress -n harbor
+kubectl get svc -n harbor
+kubectl get endpoints -n harbor
 ```
 
 ---
@@ -396,8 +451,8 @@ kubectl get pod -n harbor -w
 
 ```bash
 # 登录 Harbor UI 确认项目和镜像存在
-# 推送一个测试镜像验证写入正常
-docker push <harbor-address>/ict/test:latest
+# 最终验证，挑 1-2 个镜像实际 push/pull 一次，确认整条链路（DB + registry + 权限）都正常：
+nerdctl pull <harbor域名>/ict/<某个repo>:<tag>
 
 # 确认 DB 不再崩溃
 kubectl logs -n harbor myharbor-database-0 --tail=20 | grep -i "error\|fatal\|crash"
