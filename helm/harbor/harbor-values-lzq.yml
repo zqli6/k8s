@@ -147,7 +147,7 @@ persistence:
       storageClass: "sc-nfs"
       subPath: ""
       accessMode: ReadWriteOnce
-      size: 5Gi
+      size: 200Gi
       annotations: {}
     jobservice:
       jobLog:
@@ -155,7 +155,7 @@ persistence:
         storageClass: "sc-nfs"
         subPath: ""
         accessMode: ReadWriteOnce
-        size: 1Gi
+        size: 2Gi
         annotations: {}
     # If external database is used, the following settings for database will
     # be ignored
@@ -164,7 +164,7 @@ persistence:
       storageClass: "sc-nfs"
       subPath: ""
       accessMode: ReadWriteOnce
-      size: 1Gi
+      size: 5Gi
       annotations: {}
     # If external Redis is used, the following settings for Redis will
     # be ignored
@@ -173,14 +173,14 @@ persistence:
       storageClass: "sc-nfs"
       subPath: ""
       accessMode: ReadWriteOnce
-      size: 1Gi
+      size: 2Gi
       annotations: {}
     trivy:
       existingClaim: ""
       storageClass: "sc-nfs"
       subPath: ""
       accessMode: ReadWriteOnce
-      size: 5Gi
+      size: 10Gi
       annotations: {}
   # Define which storage backend is used for registry to store
   # images and charts. Refer to
