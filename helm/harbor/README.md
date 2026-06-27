@@ -288,11 +288,21 @@ done
 
 ### 9.2.3 备份 registry layer
 
-查看目录结构：
+registry layer数据目录结构：
 
 ```bash
-kubectl exec -n harbor $(kubectl get pod -n harbor | grep registry | awk '{print $1}') \
-  -c registry -- tree /storage/
+kubectl exec -n harbor harbor-registry-7b96dd8cf8-25xnq -c registry -- tree /storage/
+/storage
+└── docker
+    └── registry
+        └── v2
+            ├── blobs
+            │   └── sha256
+            │       ├── 00
+            │       ├── ...
+            │       └── fb                 # 此处省略了大量中间哈希前缀目录
+            └── repositories
+                └── ict                    # 项目/命名空间
 ```
 
 从 registry 容器拷贝出来（注意：拷贝耗时较久，必须等命令彻底返回到命令提示符后才能做下面的校验，否则数字是中途的过渡值）：
