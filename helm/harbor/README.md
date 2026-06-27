@@ -461,8 +461,8 @@ kubectl get endpoints -n harbor
 
 ## 9.6.1 登录 Harbor UI 确认项目和镜像存在  
 > - 登录域名查看ingress  
-- 这个域名是在[6. 文档中的配置](https://gitee.com/zqli6/k8s/tree/main/helm/harbor?svcp_stk=1_Qy3IgpgHpCe5KsHgIcVbYyQv7YPBIXxgCYfhXYcibGOo3IdlnnphuV5jnPQriJHtc0BK4L01tOz0M6A2lIt1k6akDc1UAxmGDu9L8O3LSJyqUeDzYD_psMRjqVyl7LShPCoHWIPr6VtU786i9JUaYblUE74I9pIWdxlCoNihlozrnqDTSqipGxLVlN7JPk6r5lFSs-AzixaohzoJa231Dw%3D%3D#6-%E6%96%87%E6%A1%A3%E4%B8%AD%E7%9A%84%E9%85%8D%E7%BD%AE)中讲解了  
-- 注意配置tls使用https://访问，否则可能会提示用户名或密码错误  
+这个域名是在[6. 文档中的配置](https://gitee.com/zqli6/k8s/tree/main/helm/harbor?svcp_stk=1_Qy3IgpgHpCe5KsHgIcVbYyQv7YPBIXxgCYfhXYcibGOo3IdlnnphuV5jnPQriJHtc0BK4L01tOz0M6A2lIt1k6akDc1UAxmGDu9L8O3LSJyqUeDzYD_psMRjqVyl7LShPCoHWIPr6VtU786i9JUaYblUE74I9pIWdxlCoNihlozrnqDTSqipGxLVlN7JPk6r5lFSs-AzixaohzoJa231Dw%3D%3D#6-%E6%96%87%E6%A1%A3%E4%B8%AD%E7%9A%84%E9%85%8D%E7%BD%AE)中讲解了  
+注意配置tls使用https://访问，否则可能会提示用户名或密码错误  
 ```
 kubectl get ingress -n harbor
 ```
