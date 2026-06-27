@@ -7,6 +7,7 @@
 # 5. 安装harbor   
 ## 5.1. lzq SWR 镜像加速版
 1. x86 nfs
+- 配置pvc容量：registry 200Gi；database 5Gi；jobservice 2Gi;redis 2Gi;trivy 10Gi
 ```
 # 使用下载的chart包
 wget https://gitee.com/zqli6/k8s/raw/main/helm/harbor/harbor-1.18.3.tgz \
@@ -14,6 +15,7 @@ wget https://gitee.com/zqli6/k8s/raw/main/helm/harbor/harbor-1.18.3.tgz \
 harbor-1.18.3.tgz -n harbor --create-namespace
 ```
 2. arm nfs
+- 配置pvc容量：registry 200Gi；database 5Gi；jobservice 2Gi;redis 2Gi;trivy 10Gi
 ```
 # 使用下载的chart包
 wget https://gitee.com/zqli6/k8s/raw/main/helm/harbor/harbor-1.18.3.tgz \
@@ -21,7 +23,9 @@ wget https://gitee.com/zqli6/k8s/raw/main/helm/harbor/harbor-1.18.3.tgz \
 harbor-1.18.3.tgz -n harbor --create-namespace
 ```
 3. arm topoLVM  
-- 需先安装`topoLVM`，[详见zqli6/k8s/StorageClass/topolvm](https://gitee.com/zqli6/k8s/tree/main/StorageClass/topolvm)
+- 需先安装`topoLVM`，[详见zqli6/k8s/StorageClass/topolvm](https://gitee.com/zqli6/k8s/tree/main/StorageClass/topolvm)  
+- 配置pvc容量：registry 200Gi；database 5Gi；jobservice 2Gi;redis 2Gi;trivy 10Gi
+- 对于topoLVM，申请即占用，vg，lv大小不足会报错
 ```
 wget https://gitee.com/zqli6/k8s/raw/main/helm/harbor/harbor-1.18.3.tgz \
 && helm install myharbor -f https://gitee.com/zqli6/k8s/raw/main/helm/harbor/harbor-values-topolvm-arm-lzq.yml \
