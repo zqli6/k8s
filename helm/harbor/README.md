@@ -459,8 +459,20 @@ kubectl get endpoints -n harbor
 
 ## 9.6、验证
 
+## 9.6.1 登录 Harbor UI 确认项目和镜像存在  
+> - 登录域名查看ingress  
+- 这个域名是在[6. 文档中的配置](https://gitee.com/zqli6/k8s/tree/main/helm/harbor?svcp_stk=1_Qy3IgpgHpCe5KsHgIcVbYyQv7YPBIXxgCYfhXYcibGOo3IdlnnphuV5jnPQriJHtc0BK4L01tOz0M6A2lIt1k6akDc1UAxmGDu9L8O3LSJyqUeDzYD_psMRjqVyl7LShPCoHWIPr6VtU786i9JUaYblUE74I9pIWdxlCoNihlozrnqDTSqipGxLVlN7JPk6r5lFSs-AzixaohzoJa231Dw%3D%3D#6-%E6%96%87%E6%A1%A3%E4%B8%AD%E7%9A%84%E9%85%8D%E7%BD%AE)中讲解了  
+- 注意配置tls使用https://访问，否则可能会提示用户名或密码错误  
+```
+kubectl get ingress -n harbor
+```
+> 账号：`admin`  
+密码在values.yaml中配置`harborAdminPassword: "你的密码"`  
+也可以使用下方命令查看
+```
+kubectl get secret -n harbor myharbor-core -o jsonpath='{.data.HARBOR_ADMIN_PASSWORD}' | base64 -d; echo
+```
 ```bash
-# 登录 Harbor UI 确认项目和镜像存在
 # 最终验证，挑 1-2 个镜像实际 push/pull 一次，确认整条链路（DB + registry + 权限）都正常：
 nerdctl pull <harbor域名>/ict/<某个repo>:<tag>
 
