@@ -296,7 +296,7 @@ helm uninstall myharbor -n harbor
 
 ```bash
 # 修改 values storageClass 为 topolvm-ssd
-sed -i 's/storageClass: "nfs-client"/storageClass: "topolvm-ssd"/g' \
+sed -i 's/storageClass: "nfs-client"/storageClass: "topolvm-provisioner"/g' \
   /home/lzq/harbor/harbor-values-topolvm-arm-lzq.yml
 
 # 确认修改
