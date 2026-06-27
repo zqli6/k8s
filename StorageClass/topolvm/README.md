@@ -23,7 +23,7 @@ sudo vgs
 
 ## 2.3 安装 cert-manager  
 2.3.1. [参考zqli6/skywalking中cert-manager部署](https://gitee.com/zqli6/skywalking/tree/main/k8s/manifest#1-%E9%83%A8%E7%BD%B2cert-manager)  
-2.3.2. [参考Lzq文档](https://www.yuque.com/jianglai-iayzx/wkzfha/qzes9vveaei7wk24#qrhnZ)  
+2.3.2. [参考Lzq文档](https://www.yuque.com/jianglai-iayzx/wkzfha/rk3ydmhvzgqprmww#hOUYF)  
 
 ## 2.4. 安装 TopoLVM  
 2.4.1. Helm Lzq SWR 加速镜像安装  
