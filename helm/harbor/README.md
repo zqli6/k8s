@@ -479,3 +479,35 @@ nerdctl pull <harbor域名>/ict/<某个repo>:<tag>
 # 确认 DB 不再崩溃
 kubectl logs -n harbor myharbor-database-0 --tail=20 | grep -i "error\|fatal\|crash"
 ```
+
+## 9.7 常见问题  
+### 9.7.1 用 http 访问，登录报 403 Forbidden / "CSRF token invalid"  
+
+  现象：密码确认无误（API 直连返回 200），但浏览器登录返回 403，或提示 CSRF token invalid。  
+
+  原因：Harbor 的 CSRF cookie（_gorilla_csrf）带 Secure 属性，在纯 http 下浏览器不会回传该 cookie，导致请求头里的 CSRF token 与 cookie 永远配不上，稳定 403。  
+
+  解决：必须用 https + ingress 里配置的域名访问，不能用 http、也不能用 IP 直接访问。  
+
+  确认 ingress 域名：  
+```
+kubectl get ingress -n harbor
+```
+>▎ 用 HOSTS 列里的域名，以 https 访问，例如：  
+https://ict-harbor-pro-registry-huabei2.crs.ctyun.cn  
+若本机无 DNS 解析，在本机 hosts 文件加一行：<ingress的ADDRESS> <HOSTS域名>  
+首次访问提示证书不安全（自签证书），点"高级 → 继续访问"即可。  
+
+### 9.7.2 已用 https，仍偶发 "CSRF token invalid"  
+
+  现象：已经换成 https，之前能登录，再次登录时报 CSRF token invalid。  
+
+  原因：CSRF token 有时效，且与会话 cookie 绑定。登录页停留过久导致 token 过期，或之前用 http 访问时残留的旧 cookie（_gorilla_csrf / sid）与当前 https 的新 cookie 混在一起，提交时带了失效 token。  
+
+  解决（按顺序，通常第1步即可）：  
+
+ > 1. 在登录页按 Ctrl+Shift+R 强制刷新，刷新后立即输入账号密码登录，不要停留太久。  
+  2. 若仍报错，清掉该站点残留 cookie：F12 → Application → Cookies → 选中该域名 → 全部删除，然后 Ctrl+Shift+R 重新加载再登录。  
+  3. 最彻底：关闭该站点所有标签页，开一个全新无痕窗口，直接访问 https 域名，首次加载即登录。  
+
+
