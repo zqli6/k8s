@@ -1,10 +1,10 @@
 # 1. 相关网址  
 1.1. GitHub：https://github.com/topolvm/topolvm  
-1.2. Lzq文档：[点击查看](https://www.yuque.com/jianglai-iayzx/wkzfha/qzes9vveaei7wk24#Lmae9)  
+1.2. Lzq文档：[点击查看](https://www.yuque.com/jianglai-iayzx/wkzfha/rk3ydmhvzgqprmww#UZpLD)  
 
 # 2. 部署  
 ## 2.1. 前置准备  
-[详见Lzq文档](https://www.yuque.com/jianglai-iayzx/wkzfha/qzes9vveaei7wk24#Xf2yp)   
+[详见Lzq文档](https://www.yuque.com/jianglai-iayzx/wkzfha/rk3ydmhvzgqprmww#x8ppp)   
 
 ## 2.2 创建PV及VG  
 1) 把裸盘做成 LVM 物理卷  
@@ -40,7 +40,7 @@ wget https://gitee.com/zqli6/k8s/raw/main/StorageClass/topolvm/topolvm-16.1.1.tg
 >topolvm-values-arm-lzq.yaml中的修改说明见本仓库文件或查看[Lzq文档相关章节](https://www.yuque.com/jianglai-iayzx/wkzfha/qzes9vveaei7wk24#qx6lm)  
 
 2.4.2. Helm 官方安装  
-详见：[Lzq topolvm文档](https://www.yuque.com/jianglai-iayzx/wkzfha/qzes9vveaei7wk24#b7LvY)
+详见：[Lzq topolvm文档](https://www.yuque.com/jianglai-iayzx/wkzfha/rk3ydmhvzgqprmww#BLTMt)
 
 
 
