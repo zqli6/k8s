@@ -37,7 +37,7 @@ wget https://gitee.com/zqli6/k8s/raw/main/StorageClass/topolvm/topolvm-16.1.1.tg
 && helm install topolvm -n topolvm-system topolvm-16.1.1.tgz \
 -f https://gitee.com/zqli6/k8s/raw/main/StorageClass/topolvm/topolvm-values-arm-lzq.yaml
 ```  
->topolvm-values-arm-lzq.yaml中的修改说明见本仓库文件或查看[Lzq文档相关章节](https://www.yuque.com/jianglai-iayzx/wkzfha/qzes9vveaei7wk24#qx6lm)  
+>topolvm-values-arm-lzq.yaml中的修改说明见本仓库文件或查看[Lzq文档相关章节](https://www.yuque.com/jianglai-iayzx/wkzfha/rk3ydmhvzgqprmww#dj7FU)  
 
 2.4.2. Helm 官方安装  
 详见：[Lzq topolvm文档](https://www.yuque.com/jianglai-iayzx/wkzfha/rk3ydmhvzgqprmww#BLTMt)
