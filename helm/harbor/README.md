@@ -258,13 +258,17 @@ BACKUP_DIR=/home/lzq/harbor/backup
 DATE=$(date +%Y%m%d%H%M)
 mkdir -p ${BACKUP_DIR}
 
-# 备份 DB
+# 1. 备份 DB
 kubectl exec -n harbor myharbor-database-0 -- pg_dumpall -U postgres \
   > ${BACKUP_DIR}/harbor-db-backup-${DATE}.sql
 echo "DB备份完成: $(wc -l < ${BACKUP_DIR}/harbor-db-backup-${DATE}.sql) 行"
 
-# 备份 registry layer（从 NFS 直接拷贝）
-cp -r /data/nfs/harbor-myharbor-registry/ ${BACKUP_DIR}/harbor-registry-backup/
+# 2. 备份 registry layer
+# 2.1 从容器拷贝  
+
+
+# 2.2 从 NFS 直接拷贝
+cp -r /data/nfs/harbor-myharbor-registry/docker ${BACKUP_DIR}/harbor-registry-backup/
 echo "Registry备份完成: $(du -sh ${BACKUP_DIR}/harbor-registry-backup/ | awk '{print $1}')"
 ```
 
