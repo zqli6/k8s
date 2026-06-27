@@ -16,7 +16,7 @@ cert-manager:
 
 # StorageClass —— chart 自动创建一个，下面是默认结构
 storageClasses:
-  - name: topolvm-ssd
+  - name: topolvm-rovisioner
     storageClass:
       fsType: xfs
       isDefaultClass: true
