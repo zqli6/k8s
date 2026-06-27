@@ -1,0 +1,64 @@
+# topolvm-values-lzq-arm.yaml 部分修改，获取完整配置 helm show values topolvm-16.1.1.tgz >topolvm-values.yaml
+# 
+image:
+  # image.repository -- TopoLVM image repository to use.
+  #repository: ghcr.io/topolvm/topolvm-with-sidecar
+  repository: swr.cn-southwest-2.myhuaweicloud.com/zqli/ghcr.io/topolvm/topolvm-with-sidecar
+
+  # image.tag -- TopoLVM image tag to use.
+  # @default -- `{{ .Chart.AppVersion }}`
+  tag:  0.41.0-arm  # 指定版本，若不指定引用Chart appversion
+
+
+# 已独立安装 cert-manager，故设为 false；若想让 chart 一站式安装则改为 true
+cert-manager:
+  enabled: false   # 已独立安装则为 false；想让 chart 一站式装则设为 true
+
+# StorageClass —— chart 自动创建一个，下面是默认结构
+storageClasses:
+  - name: topolvm-ssd
+    storageClass:
+      fsType: xfs
+      isDefaultClass: true
+      volumeBindingMode: WaitForFirstConsumer
+      allowVolumeExpansion: true
+      additionalParameters:
+        "topolvm.io/device-class": "ssd"
+
+# lvmd —— 由 chart 作为 DaemonSet 管理
+lvmd:
+  managed: true
+  socketName: /run/topolvm/lvmd.sock
+  deviceClasses:
+    - name: ssd
+      volume-group: node-vg
+      default: true
+      spare-gb: 10
+      type: thin
+      thin-pool:
+        name: thin-pool
+        overprovision-ratio: 5.0
+  # 若要再加一个 thick HDD 类，追加：
+  # - name: hdd
+  #   volume-group: hdd-vg
+  #   spare-gb: 10
+
+# CSI Node DaemonSet
+node:
+  lvmdEmbedded: false   # 用 DaemonSet 跑 lvmd 时必须 false
+  prometheus:
+    podMonitor:
+      enabled: false
+
+# Controller
+controller:
+  replicaCount: 1   # 单节点集群时改 1，避免 Pending
+  storageCapacityTracking:
+    enabled: true   # 推荐开启，托管集群里替代 scheduler extender
+
+# 容量感知调度走 CSIStorageCapacity（k3s/托管集群推荐），因此 extender 与 webhook 都关
+scheduler:
+  enabled: false
+webhook:
+  podMutatingWebhook:
+    enabled: false
