@@ -229,3 +229,128 @@ json
 }
 ```
 然后 systemctl restart docker。此方式会完全跳过 TLS 验证，存在中间人攻击风险，仅建议在测试环境临时使用。  
+
+# 9. Harbor NFS → TopoLVM 迁移手册  
+- 主要涉及备份和还原
+
+## 一、背景说明
+
+Harbor DB 使用 NFS 存储，PostgreSQL 在 NFS 上高并发写入时 fsync 超时，
+导致 PG 子进程 SIGPIPE 崩溃，Harbor 认证失败，镜像推送报 401。
+迁移至 TopoLVM（基于 LVM，数据存于本地 NVMe）彻底解决该问题。
+
+### 需要备份的组件
+
+| 组件 | 是否备份 | 原因 |
+|------|---------|------|
+| database | ✅ 必须 | 用户/项目/镜像元数据/系统配置 |
+| registry | ✅ 必须 | 镜像实际 layer 数据 |
+| jobservice | ❌ 不需要 | 任务日志，丢了无影响 |
+| redis | ❌ 不需要 | 缓存，重启自动重建 |
+| trivy | ❌ 不需要 | 漏洞库，自动更新 |
+
+---
+
+## 二、备份
+
+```bash
+BACKUP_DIR=/home/lzq/harbor/backup
+DATE=$(date +%Y%m%d%H%M)
+mkdir -p ${BACKUP_DIR}
+
+# 备份 DB
+kubectl exec -n harbor myharbor-database-0 -- pg_dumpall -U postgres \
+  > ${BACKUP_DIR}/harbor-db-backup-${DATE}.sql
+echo "DB备份完成: $(wc -l < ${BACKUP_DIR}/harbor-db-backup-${DATE}.sql) 行"
+
+# 备份 registry layer（从 NFS 直接拷贝）
+cp -r /data/nfs/harbor-myharbor-registry/ ${BACKUP_DIR}/harbor-registry-backup/
+echo "Registry备份完成: $(du -sh ${BACKUP_DIR}/harbor-registry-backup/ | awk '{print $1}')"
+```
+
+---
+
+## 三、旧应用停机
+
+```bash
+# Scale down 所有 Harbor 组件
+kubectl scale deployment -n harbor --all --replicas=0
+kubectl scale statefulset -n harbor --all --replicas=0
+
+# 确认全部停止
+kubectl get pod -n harbor
+# 预期输出: No resources found in harbor namespace.
+
+# 删除所有旧 PVC（NFS）
+kubectl delete pvc -n harbor --all
+kubectl get pvc -n harbor
+# 预期输出: No resources found in harbor namespace.
+
+# 卸载 Harbor
+helm uninstall myharbor -n harbor
+```
+
+---
+
+## 四、新应用开机
+
+```bash
+# 修改 values storageClass 为 topolvm-ssd
+sed -i 's/storageClass: "nfs-client"/storageClass: "topolvm-ssd"/g' \
+  /home/lzq/harbor/harbor-values-topolvm-arm-lzq.yml
+
+# 确认修改
+grep "storageClass" /home/lzq/harbor/harbor-values-topolvm-arm-lzq.yml | grep -v "#"
+
+# 重新安装 Harbor
+helm install myharbor /home/lzq/harbor/harbor-1.18.3.tgz \
+  -n harbor \
+  -f /home/lzq/harbor/harbor-values-topolvm-arm-lzq.yml \
+  --wait --timeout 10m
+
+# 确认所有 pod Running
+kubectl get pod -n harbor
+```
+
+---
+
+## 五、还原
+
+```bash
+# 确认 Harbor 所有 pod Running
+kubectl get pod -n harbor
+
+# 1. 还原 DB
+kubectl exec -i -n harbor myharbor-database-0 -- psql -U postgres \
+  < /home/lzq/harbor/backup/harbor-db-backup-${DATE}.sql
+echo "DB还原完成"
+
+# 2. 还原 registry layer
+REGISTRY_POD=$(kubectl get pod -n harbor -l component=registry \
+  -o jsonpath='{.items[0].metadata.name}')
+
+kubectl cp /home/lzq/harbor/backup/harbor-registry-backup/. \
+  harbor/${REGISTRY_POD}:/storage/ -c registry
+echo "Registry还原完成"
+
+# 3. 重启 core 和 registry 使配置生效
+kubectl rollout restart deployment -n harbor myharbor-core
+kubectl rollout restart deployment -n harbor myharbor-registry
+
+# 4. 确认最终状态
+kubectl get pod -n harbor
+kubectl get pvc -n harbor
+```
+
+---
+
+## 六、验证
+
+```bash
+# 登录 Harbor UI 确认项目和镜像存在
+# 推送一个测试镜像验证写入正常
+docker push <harbor-address>/ict/test:latest
+
+# 确认 DB 不再崩溃
+kubectl logs -n harbor myharbor-database-0 --tail=20 | grep -i "error\|fatal\|crash"
+```
