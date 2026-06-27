@@ -329,7 +329,11 @@ echo "DB还原完成"
 REGISTRY_POD=$(kubectl get pod -n harbor -l component=registry \
   -o jsonpath='{.items[0].metadata.name}')
 
-kubectl cp /home/lzq/harbor/backup/harbor-registry-backup/. \
+# registry中layer的目录结构
+[root@localhost harbor]# kubectl exec -it -n harbor harbor-registry-6d9c999657-8hzgj -c registry -- ls /storage/docker/registry/v2/
+blobs  repositories
+
+kubectl cp /home/lzq/harbor/backup/harbor-registry-backup/docker/. \
   harbor/${REGISTRY_POD}:/storage/ -c registry
 echo "Registry还原完成"
 
