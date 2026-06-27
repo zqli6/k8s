@@ -265,13 +265,30 @@ kubectl exec -n harbor myharbor-database-0 -- pg_dumpall -U postgres \
 echo "DB备份完成: $(wc -l < ${BACKUP_DIR}/harbor-db-backup-${DATE}.sql) 行"
 ```
 
-### 9.2.3 备份 registry layer
+### 9.2.3 备份 registry layer  
+目录结构
+```
+kubectl exec -n harbor harbor-registry-7b96dd8cf8-25xnq -c registry -- tree /storage/
+/storage
+└── docker
+    └── registry
+        └── v2
+            ├── blobs
+            │   └── sha256
+            │       ├── 00
+            │       ├── ...
+            │       └── fb                 # 此处省略了大量中间哈希前缀目录
+            └── repositories
+                └── ict                    # 项目/命名空间
+```
 #### 9.2.3.1 从容器拷贝  
-
+```
+kubectl exec -n harbor `kubectl get pod -n harbor | grep registry | cut -d " " -f1` -c registry -- cp /storage/docker ${BACKUP_DIR}/harbor-registry-backup/docker
+```
 
 #### 9.2.3.2 从 NFS 直接拷贝
 ```
-cp -r /data/nfs/harbor-myharbor-registry/docker ${BACKUP_DIR}/harbor-registry-backup/
+cp -r /data/nfs/harbor-myharbor-registry/docker ${BACKUP_DIR}/harbor-registry-backup/docker
 echo "Registry备份完成: $(du -sh ${BACKUP_DIR}/harbor-registry-backup/ | awk '{print $1}')"
 ```
 
@@ -351,7 +368,7 @@ REGISTRY_POD=$(kubectl get pod -n harbor -l component=registry \
 
 # 拷贝备份数据到 pod
 kubectl cp /home/lzq/harbor/backup/harbor-registry-backup/docker \
-  harbor/${REGISTRY_POD}:/storage/ -c registry
+  harbor/${REGISTRY_POD}:/storage/docker -c registry
 
 # 确认数据路径正确（必须在 /storage/docker/registry/v2/ 下）
 kubectl exec -n harbor ${REGISTRY_POD} -c registry -- ls /storage/
