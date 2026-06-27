@@ -230,10 +230,10 @@ json
 ```
 然后 systemctl restart docker。此方式会完全跳过 TLS 验证，存在中间人攻击风险，仅建议在测试环境临时使用。  
 
-# 9. Harbor NFS → TopoLVM 迁移手册  
-- 主要涉及备份和还原
+# 9. 备份和还原
+- 以Harbor NFS → TopoLVM 迁移为例  
 
-## 一、背景说明
+## 9.1、背景说明
 
 Harbor DB 使用 NFS 存储，PostgreSQL 在 NFS 上高并发写入时 fsync 超时，
 导致 PG 子进程 SIGPIPE 崩溃，Harbor 认证失败，镜像推送报 401。
@@ -251,7 +251,7 @@ Harbor DB 使用 NFS 存储，PostgreSQL 在 NFS 上高并发写入时 fsync 超
 
 ---
 
-## 二、备份
+## 9.2、备份
 
 ```bash
 BACKUP_DIR=/home/lzq/harbor/backup
@@ -270,7 +270,7 @@ echo "Registry备份完成: $(du -sh ${BACKUP_DIR}/harbor-registry-backup/ | awk
 
 ---
 
-## 三、旧应用停机
+## 9.3、旧应用停机
 
 ```bash
 # Scale down 所有 Harbor 组件
@@ -292,7 +292,7 @@ helm uninstall myharbor -n harbor
 
 ---
 
-## 四、新应用开机
+## 9.4、新应用开机
 
 ```bash
 # 修改 values storageClass 为 topolvm-ssd
@@ -314,7 +314,7 @@ kubectl get pod -n harbor
 
 ---
 
-## 五、还原
+## 9.5、还原
 
 ```bash
 # 确认 Harbor 所有 pod Running
@@ -344,7 +344,7 @@ kubectl get pvc -n harbor
 
 ---
 
-## 六、验证
+## 9.6、验证
 
 ```bash
 # 登录 Harbor UI 确认项目和镜像存在
