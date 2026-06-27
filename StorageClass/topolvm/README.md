@@ -32,13 +32,13 @@ sudo lvs
 ```  
 > [thin pool的作用解析](https://www.yuque.com/jianglai-iayzx/wkzfha/rk3ydmhvzgqprmww#gskog)
 
-## 2.3 安装 cert-manager  
-2.3.1. [参考zqli6/skywalking中cert-manager部署](https://gitee.com/zqli6/skywalking/tree/main/k8s/manifest#1-%E9%83%A8%E7%BD%B2cert-manager)  
-2.3.2. [参考Lzq文档](https://www.yuque.com/jianglai-iayzx/wkzfha/rk3ydmhvzgqprmww#hOUYF)  
+## 2.4 安装 cert-manager  
+2.4.1. [参考zqli6/skywalking中cert-manager部署](https://gitee.com/zqli6/skywalking/tree/main/k8s/manifest#1-%E9%83%A8%E7%BD%B2cert-manager)  
+2.4.2. [参考Lzq文档](https://www.yuque.com/jianglai-iayzx/wkzfha/rk3ydmhvzgqprmww#hOUYF)  
 
-## 2.4. 安装 TopoLVM  
-2.4.1. Helm Lzq SWR 加速镜像安装  
-2.4.1.1 创建名称空间并打标签[必须]  
+## 2.5. 安装 TopoLVM  
+2.5.1. Helm Lzq SWR 加速镜像安装  
+2.5.1.1 创建名称空间并打标签[必须]  
 ```
 kubectl create namespace topolvm-system
 kubectl label namespace topolvm-system topolvm.io/webhook=ignore
@@ -50,7 +50,7 @@ wget https://gitee.com/zqli6/k8s/raw/main/StorageClass/topolvm/topolvm-16.1.1.tg
 ```  
 >topolvm-values-arm-lzq.yaml中的修改说明见本仓库文件或查看[Lzq文档相关章节](https://www.yuque.com/jianglai-iayzx/wkzfha/rk3ydmhvzgqprmww#dj7FU)  
 
-2.4.2. Helm 官方安装  
+2.5.2. Helm 官方安装  
 详见：[Lzq topolvm文档](https://www.yuque.com/jianglai-iayzx/wkzfha/rk3ydmhvzgqprmww#BLTMt)
 
 
