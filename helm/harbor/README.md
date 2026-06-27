@@ -252,22 +252,25 @@ Harbor DB 使用 NFS 存储，PostgreSQL 在 NFS 上高并发写入时 fsync 超
 ---
 
 ## 9.2、备份
-
+### 9.2.1 设置备份目录
 ```bash
 BACKUP_DIR=/home/lzq/harbor/backup
 DATE=$(date +%Y%m%d%H%M)
 mkdir -p ${BACKUP_DIR}
-
-# 1. 备份 DB
+```
+### 9.2.2 备份 DB
+```bash
 kubectl exec -n harbor myharbor-database-0 -- pg_dumpall -U postgres \
   > ${BACKUP_DIR}/harbor-db-backup-${DATE}.sql
 echo "DB备份完成: $(wc -l < ${BACKUP_DIR}/harbor-db-backup-${DATE}.sql) 行"
+```
 
-# 2. 备份 registry layer
-# 2.1 从容器拷贝  
+### 9.2.3 备份 registry layer
+#### 9.2.3.1 从容器拷贝  
 
 
-# 2.2 从 NFS 直接拷贝
+#### 9.2.3.2 从 NFS 直接拷贝
+```
 cp -r /data/nfs/harbor-myharbor-registry/docker ${BACKUP_DIR}/harbor-registry-backup/
 echo "Registry备份完成: $(du -sh ${BACKUP_DIR}/harbor-registry-backup/ | awk '{print $1}')"
 ```
