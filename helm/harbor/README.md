@@ -9,23 +9,23 @@
 1. x86 nfs
 ```
 # 使用下载的chart包
-wget https://gitee.com/zqli6/k8s/raw/main/helm/harbor/harbor-values-lzq.yml  \
-&& wget https://gitee.com/zqli6/k8s/raw/main/helm/harbor/harbor-1.18.3.tgz \
-&& helm install myharbor -f harbor-values-lzq.yml harbor-1.18.3.tgz -n harbor --create-namespace
+wget https://gitee.com/zqli6/k8s/raw/main/helm/harbor/harbor-1.18.3.tgz \
+&& helm install myharbor -f https://gitee.com/zqli6/k8s/raw/main/helm/harbor/harbor-values-lzq.yml \
+harbor-1.18.3.tgz -n harbor --create-namespace
 ```
 2. arm nfs
 ```
 # 使用下载的chart包
-wget https://gitee.com/zqli6/k8s/raw/main/helm/harbor/harbor-values-arm-lzq.yml  \
-&& wget https://gitee.com/zqli6/k8s/raw/main/helm/harbor/harbor-1.18.3.tgz \
-&& helm install myharbor -f harbor-values-arm-lzq.yml harbor-1.18.3.tgz -n harbor --create-namespace
+wget https://gitee.com/zqli6/k8s/raw/main/helm/harbor/harbor-1.18.3.tgz \
+&& helm install myharbor -f https://gitee.com/zqli6/k8s/raw/main/helm/harbor/harbor-values-arm-lzq.yml \
+harbor-1.18.3.tgz -n harbor --create-namespace
 ```
 3. arm topoLVM  
 - 需先安装`topoLVM`，[详见zqli6/k8s/StorageClass/topolvm](https://gitee.com/zqli6/k8s/tree/main/StorageClass/topolvm)
 ```
-wget https://gitee.com/zqli6/k8s/raw/main/helm/harbor/harbor-values-topolvm-arm-lzq.yml  \
-&& wget https://gitee.com/zqli6/k8s/raw/main/helm/harbor/harbor-1.18.3.tgz \
-&& helm install myharbor -f harbor-values-topolvm-arm-lzq.yml harbor-1.18.3.tgz -n harbor --create-namespace
+wget https://gitee.com/zqli6/k8s/raw/main/helm/harbor/harbor-1.18.3.tgz \
+&& helm install myharbor -f https://gitee.com/zqli6/k8s/raw/main/helm/harbor/harbor-values-topolvm-arm-lzq.yml \
+harbor-1.18.3.tgz -n harbor --create-namespace
 ```
 
 4. 使用helm仓库
