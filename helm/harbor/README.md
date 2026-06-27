@@ -315,35 +315,54 @@ kubectl get pod -n harbor
 ---
 
 ## 9.5、还原
+### 5.1 还原 DB
 
 ```bash
-# 确认 Harbor 所有 pod Running
+# 停掉 core 和 jobservice 断开 DB 连接
+kubectl scale deployment -n harbor harbor-core harbor-jobservice --replicas=0
 kubectl get pod -n harbor
 
-# 1. 还原 DB
-kubectl exec -i -n harbor myharbor-database-0 -- psql -U postgres \
-  < /home/lzq/harbor/backup/harbor-db-backup-${DATE}.sql
-echo "DB还原完成"
+# 清空 DB 重新导入（避免 duplicate key 冲突）
+kubectl exec -n harbor harbor-database-0 -- psql -U postgres -c "DROP DATABASE registry;"
+kubectl exec -n harbor harbor-database-0 -- psql -U postgres -c "CREATE DATABASE registry OWNER postgres;"
 
-# 2. 还原 registry layer
+# 恢复备份
+kubectl exec -i -n harbor harbor-database-0 -- psql -U postgres \
+  < /home/lzq/harbor/backup/harbor-db-backup-${DATE}.sql
+
+# 启动 core 和 jobservice
+kubectl scale deployment -n harbor harbor-core harbor-jobservice --replicas=1
+kubectl get pod -n harbor -w
+```
+
+### 5.2 还原 registry layer
+
+```bash
+# 获取 registry pod 名称
 REGISTRY_POD=$(kubectl get pod -n harbor -l component=registry \
   -o jsonpath='{.items[0].metadata.name}')
 
-# registry中layer的目录结构
-[root@localhost harbor]# kubectl exec -it -n harbor harbor-registry-6d9c999657-8hzgj -c registry -- ls /storage/docker/registry/v2/
-blobs  repositories
-
-kubectl cp /home/lzq/harbor/backup/harbor-registry-backup/docker/. \
+# 拷贝备份数据到 pod
+kubectl cp /home/lzq/harbor/backup/harbor-registry-backup/docker \
   harbor/${REGISTRY_POD}:/storage/ -c registry
-echo "Registry还原完成"
 
-# 3. 重启 core 和 registry 使配置生效
-kubectl rollout restart deployment -n harbor myharbor-core
-kubectl rollout restart deployment -n harbor myharbor-registry
+# 确认数据路径正确（必须在 /storage/docker/registry/v2/ 下）
+kubectl exec -n harbor ${REGISTRY_POD} -c registry -- ls /storage/
+# 预期输出: docker
 
-# 4. 确认最终状态
-kubectl get pod -n harbor
-kubectl get pvc -n harbor
+# 如果数据在错误路径（如 /storage/harbor-myharbor-registry/docker/）需要移动
+kubectl exec -n harbor ${REGISTRY_POD} -c registry -- \
+  mv /storage/harbor-myharbor-registry/docker/ /storage/
+kubectl exec -n harbor ${REGISTRY_POD} -c registry -- \
+  rm -rf /storage/harbor-myharbor-registry/
+```
+
+### 5.3 重启生效
+
+```bash
+kubectl rollout restart deployment -n harbor harbor-core
+kubectl rollout restart deployment -n harbor harbor-registry
+kubectl get pod -n harbor -w
 ```
 
 ---
