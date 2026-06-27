@@ -281,13 +281,13 @@ kubectl exec -n harbor harbor-registry-7b96dd8cf8-25xnq -c registry -- tree /sto
             └── repositories
                 └── ict                    # 项目/命名空间
 ```
-#### 9.2.3.1 从容器拷贝  
+#### 9.2.3.1 方法一：从`registry`拷贝  
 ```
 kubectl exec -n harbor `kubectl get pod -n harbor | grep registry | cut -d " " -f1` \
 -c registry -- cp /storage/docker ${BACKUP_DIR}/harbor-registry-backup/docker
 ```
 
-#### 9.2.3.2 从 NFS 直接拷贝
+#### 9.2.3.2 方法二：从`NFS`直接拷贝
 ```
 cp -r /data/nfs/harbor-myharbor-registry/docker ${BACKUP_DIR}/harbor-registry-backup/docker
 echo "Registry备份完成: $(du -sh ${BACKUP_DIR}/harbor-registry-backup/ | awk '{print $1}')"
