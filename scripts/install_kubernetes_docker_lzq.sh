@@ -213,7 +213,8 @@ Requires=cri-docker.socket
 
 [Service]
 Type=notify
-ExecStart=/usr/local/bin/cri-dockerd --container-runtime-endpoint fd:// --pod-infra-container-image registry.aliyuncs.com/google_containers/pause:$PAUSE_VERSION
+# ExecStart=/usr/local/bin/cri-dockerd --container-runtime-endpoint fd:// --pod-infra-container-image registry.aliyuncs.com/google_containers/pause:$PAUSE_VERSION
+ExecStart=/usr/local/bin/cri-dockerd --container-runtime-endpoint fd:// --pod-infra-container-imageswr.cn-southwest-2.myhuaweicloud.com/zqli/google_containers/pause:$PAUSE_VERSION
 ExecReload=/bin/kill -s HUP \$MAINPID
 TimeoutSec=0
 RestartSec=2
