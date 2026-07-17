@@ -5,6 +5,23 @@
 01 至 04 为 nfs-subdir-external-provisioner 的部署及StorageClass的创建  
 其他为pvc和pod的创建（05、06）
 - 创建 NFS 共享  
+  - 服务端：
+  ```
+  [root@master1 ~]# apt update && apt -y install nfs-server
+  [root@master1 ~]# systemctl status nfs-server.service
+  [root@master1 ~]# mkdir -pv /data/sc-nfs/
+  [root@master1 ~]# vim /etc/exports
+  # 授权 worker 节点的网段可以挂载
+  # /data/sc-nfs *(rw,no_root_squash,all_squash,anonuid=0,anongid=0)
+  /data/sc-nfs *(rw,no_root_squash)
+  
+  # 配置生效
+  exportfs -rv
+  ```
+  - 客户端：安装nfs客户端挂载工具即可，不需要挂载nfs目录
+  ```
+  apt update && apt -y install nfs-common 或者 nfs-client
+  ```
   - 共享文件名为：`sc-nfs` 
   - 若不一致需修改`03-nfs-client-provisioner_lzq.yaml`
   - `spec.template.spec.containers.env: /data/sc-nfs`  # NFS 共享目录
