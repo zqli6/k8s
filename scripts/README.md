@@ -31,8 +31,12 @@ wget https://github.com/Mirantis/cri-dockerd/releases/download/v0.3.23/cri-docke
 <https://github.com/Mirantis/cri-dockerd/releases>
 3. Kubernetes  
 <https://github.com/kubernetes/kubernetes>
+
 # 2. install_kubernetes_containerd.sh  
-1. 使用前先修改脚本，选择单主或多主架构 
+1. 下载脚本，使用前先修改脚本，选择单主或多主架构
+```
+wget https://gitee.com/zqli6/k8s/raw/main/scripts/install_kubernetes_containerd_lzq.sh
+``` 
 2. To download the latest containerd form GitHub  
 <https://github.com/containerd/containerd>
 # 3. 使用sync_images_SWR.sh
