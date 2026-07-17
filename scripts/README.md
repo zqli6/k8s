@@ -13,6 +13,19 @@ kubeadm init --kubernetes-version=v${K8S_RELEASE_VERSION} --control-plane-endpoi
 **lzq 后缀的脚本使用的k8s组件镜像使用lzq SWR镜像仓库进行加速**
 # 1.insatll_ kubernetes_docker.sh  
 1. Place the script install_kubernetes_docker.sh and the file cri-dockerd-0.3.23.amd64.tgz in the same directory.
+```
+# 下载脚本
+wget https://gitee.com/zqli6/k8s/raw/main/scripts/install_kubernetes_docker_lzq.sh
+```
+```
+# 下载 LZQ Gitee cri-docekr 0.3.23，脚本中默认这个版本
+wget https://gitee.com/zqli6/k8s/raw/main/scripts/cri-dockerd-0.3.23.amd64.tgz
+```
+如果 Gitee无法下载，可访问 [cri-docker Github](https://github.com/Mirantis/cri-dockerd)下载
+```
+# 下载官方 Github cri-docker 0.3.23
+wget https://github.com/Mirantis/cri-dockerd/releases/download/v0.3.23/cri-dockerd-0.3.23.amd64.tgz
+```
 2. Modify the script to choose K8s version and edit hosts configuration.
 3. To download the latest cri-dockerd release  
 <https://github.com/Mirantis/cri-dockerd/releases>
