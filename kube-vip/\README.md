@@ -103,8 +103,53 @@ sed -i 's/value: :2112/value: :2113/g' kube-vip-ds.yaml
 ## 3.3 Docker运行时  
 ### 3.3.1 manifest
 ```
-
+docker run --network host --rm $IMAGE manifest pod \
+  --interface $INTERFACE \
+  --address $VIP \
+  --controlplane \
+  --services \
+  --arp \
+  --leaderElection | tee /etc/kubernetes/manifests/kube-vip.yaml
 ```
 ### 3.3.2 daemonset
+3.3.2.1 部署权限 (RBAC)二选一
 ```
+# lzq SWR仓库加速版
+kubectl apply -f https://gitee.com/zqli6/k8s/raw/main/network/kube-vip/rbac.yaml
+```
+```
+# 官方版
+kubectl apply -f https://kube-vip.io/manifests/rbac.yaml
+```
+
+3.2.2.2 生成 DaemonSet 配置 
+```
+docker run --network host --rm $IMAGE manifest daemonset \
+    --interface $INTERFACE \
+    --address $VIP \
+    --inCluster \
+    --controlplane \
+    --services \
+    --arp \
+    --leaderElection \
+    --taint > kube-vip-ds.yaml
+```
+
+3.2.2.3 替换为SWR镜像加速,若不替换及使用官方镜像
+```
+sed -i "s|image: ghcr.io/kube-vip/kube-vip:.*|image: $IMAGE|g" kube-vip-ds.yaml
+```
+
+3.2.2.4 应用部署  
+```
+kubectl apply -f kube-vip-ds.yaml
+```
+
+3.2.2.5 部署失败可选操作  
+```
+# 【可选】修正 2：手动补全 Args（v1.1.2 必备，否则 Lease 不会生成）
+sed -i '/- manager/a \        - --controlplane\n        - --leaderElection' kube-vip-ds.yaml
+
+# 【可选】修正 3：修改监控端口防止 2112 冲突
+sed -i 's/value: :2112/value: :2113/g' kube-vip-ds.yaml
 ```
