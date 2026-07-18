@@ -1,7 +1,8 @@
 # 1. 相关网站
 1. 官方GitHub：https://github.com/kube-vip/kube-vip  
-2. lzq部署k8s文档：[lzq文档-部署k8s](https://www.yuque.com/jianglai-iayzx/sa1zul/lxkwah6m1zw0h7vb#coJvj)  
-2. lzq部署学习文档：[lzq文档-部署kube-vip](https://www.yuque.com/jianglai-iayzx/sa1zul/yew3qp30rggryvb5#WrCUK)  
+2. lzq部署k8s文档[课件版-haproxy高可用]：[lzq文档-部署k8s-课件版-haproxy高可用](https://www.yuque.com/jianglai-iayzx/sa1zul/lxkwah6m1zw0h7vb#coJvj)  
+3. lzq部署k8s文档[精简版-kube-vip高可用]：[lzq文档-部署k8s-精简版-kube-vip高可用](https://www.yuque.com/jianglai-iayzx/sa1zul/yew3qp30rggryvb5#t6X5K)  
+4. lzq部署学习文档：[lzq文档-部署kube-vip](https://www.yuque.com/jianglai-iayzx/sa1zul/yew3qp30rggryvb5#WrCUK)  
 
 
 # 2. 部署准备  
