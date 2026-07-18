@@ -14,8 +14,8 @@ kubeadm init --kubernetes-version=v${K8S_RELEASE_VERSION} --control-plane-endpoi
 --image-repository registry.aliyuncs.com/google_containers \                   # 指定加速仓库
 --upload-certs --cri-socket=unix:///run/cri-dockerd.sock                       # Docker作为运行时指定cri-docker
 ```
-## 2.1 做域名解析至kube-vip  
-> 如果部署前做了单节点域名解析，需取消之前的解析
+## 2.1 所有k8s节点做域名解析至kube-vip  
+> 如果部署前做了单节点域名解析，需取更改为kube-vip解析
 ```
 echo "10.0.0.199 kubeapi.lzq.org" >> /etc/hosts
 ```
