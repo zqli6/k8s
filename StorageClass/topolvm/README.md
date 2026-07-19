@@ -33,7 +33,7 @@ sudo lvs
 > [thin pool的作用解析](https://www.yuque.com/jianglai-iayzx/wkzfha/rk3ydmhvzgqprmww#gskog)
 
 ## 2.4 安装 cert-manager  
-2.4.1. [参考zqli6/skywalking中cert-manager部署](https://gitee.com/zqli6/skywalking/tree/main/k8s/manifest#1-%E9%83%A8%E7%BD%B2cert-manager)  
+2.4.1. [参考zqli6/skywalking中cert-manager部署](https://gitee.com/zqli6/skywalking/blob/main/README.md#%E9%83%A8%E7%BD%B2cert-manager)  
 2.4.2. [参考Lzq文档](https://www.yuque.com/jianglai-iayzx/wkzfha/rk3ydmhvzgqprmww#hOUYF)  
 
 ## 2.5. 安装 TopoLVM  
