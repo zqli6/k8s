@@ -31,7 +31,8 @@
   kubectl apply -f https://gitee.com/zqli6/k8s/raw/main/StorageClass/nfs-subdir-external-provisioner/01-namespace.yaml
   kubectl apply -f https://gitee.com/zqli6/k8s/raw/main/StorageClass/nfs-subdir-external-provisioner/02-rbac.yaml
   ```
-- 部署 NFS-Subdir-External-Provisioner 对应的 Deployment（nfs-client-provisioner.yaml）  
+- 部署 NFS-Subdir-External-Provisioner 对应的 Deployment（nfs-client-provisioner.yaml） 
+  - *需要做NFS_SERVER的域名解析* 
   - 官方镜像：nfs-client-provisioner.yaml
   - SWR仓库镜像：nfs-client-provisioner_lzq.yaml
   ```
