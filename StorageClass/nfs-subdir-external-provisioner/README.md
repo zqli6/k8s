@@ -7,7 +7,7 @@
 - 创建 NFS 共享  
   - 服务端：
   ```
-  [root@master1 ~]# apt update && apt -y install nfs-server
+  [root@master1 ~]# apt update && apt -y install nfs-kernel-server
   [root@master1 ~]# systemctl status nfs-server.service
   [root@master1 ~]# mkdir -pv /data/sc-nfs/
   [root@master1 ~]# vim /etc/exports
@@ -17,6 +17,9 @@
   
   # 配置生效
   exportfs -rv
+
+  # 每个节点做nfs的地址解析
+  echo "10.0.0.100 nfs.wang.org" >>/etc/hosts
   ```
   - 客户端：安装nfs客户端挂载工具即可，不需要挂载nfs目录
   ```
