@@ -5,6 +5,7 @@ metadata:
   annotations:
     storageclass.kubernetes.io/is-default-class: "true"  # 是否设置为默认的storageclass
 provisioner: k8s-sigs.io/nfs-subdir-external-provisioner # or choose another name, must match deployment's env PROVISIONER_NAME'
+allowVolumeExpansion: true   # 允许动态扩容
 parameters:
   archiveOnDelete: "true" # 设置为"false"时删除PVC不会保留数据,"true"则保留数据
   pathPattern: ${.PVC.namespace}-${.PVC.name}  # 设置pvc的自定义路径名称，增加可读性
