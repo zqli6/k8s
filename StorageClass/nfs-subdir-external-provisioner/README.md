@@ -15,6 +15,8 @@
   # /data/sc-nfs *(rw,no_root_squash,all_squash,anonuid=0,anongid=0)
   /data/sc-nfs *(rw,no_root_squash)
   
+  echo '/data/sc-nfs *(rw,no_root_squash)' >>/etc/exports
+ 
   # 配置生效
   exportfs -rv
 
