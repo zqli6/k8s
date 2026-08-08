@@ -43,10 +43,8 @@
 | flannel | `swr.cn-southwest-2.myhuaweicloud.com/zqli/flannel/flannel:v0.25.7` |
 | flannel-cni-plugin | `swr.cn-southwest-2.myhuaweicloud.com/zqli/flannel/flannel-cni-plugin:v1.5.1-flannel2` |
 > flannel本地镜像似乎是
-
-> `swr.cn-southwest-2.myhuaweicloud.com/zqli/google_containers/flannel:v0.25.7`
-
-> `swr.cn-southwest-2.myhuaweicloud.com/zqli/google_containers/flannel-cni-plugin:v1.5.1-flannel2`
+`swr.cn-southwest-2.myhuaweicloud.com/zqli/google_containers/flannel:v0.25.7`
+`swr.cn-southwest-2.myhuaweicloud.com/zqli/google_containers/flannel-cni-plugin:v1.5.1-flannel2`
 
 ## 三、所有节点基础环境
 
