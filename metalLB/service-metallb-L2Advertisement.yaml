@@ -6,16 +6,18 @@ metadata:
 spec:
   ipAddressPools:
     - localip-pool
-# 1.1 通过指定节点标签匹配
-# nodeSelectors:
-# - matchLabels:
-#     kubernetes.io/hostname: node-01 
+#  1.1 通过指定节点标签匹配
+#  nodeSelectors:
+#  - matchLabels:
+#      kubernetes.io/hostname: node-01
+#  - matchLabels:
+#      kubernetes.io/hostname: node-02 
 
 # 1.2 或者限定只能由带有"ingress"角色的节点公告
 # 需提前给节点打标签：kubectl label nodes <你的节点名称> node-role.kubernetes.io/ingress=true
-# nodeSelectors:
-# - matchLabels:
-#     node-role.kubernetes.io/ingress: "true"
+#  nodeSelectors:
+#  - matchLabels:
+#      node-role.kubernetes.io/ingress: "true"
 
 # 2. 指定网卡名进行公告
 #   interfaces:
