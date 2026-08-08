@@ -20,5 +20,5 @@ spec:
 #      node-role.kubernetes.io/ingress: "true"
 
 # 2. 指定网卡名进行公告
-#   interfaces:
-#     - eth0
+#  interfaces:
+#    - eth0
