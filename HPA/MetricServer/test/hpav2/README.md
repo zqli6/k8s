@@ -1,6 +1,6 @@
 # hpav2-cpu-demo.yaml
 ```
-https://gitee.com/zqli6/k8s/raw/main/HPA/MetricServer/test/hpav2/hpav2-cpu-demo.yaml
+kubectl apply -f https://gitee.com/zqli6/k8s/raw/main/HPA/MetricServer/test/hpav2/hpav2-cpu-demo.yaml
 ``` 
 ```
 kubectl apply -f https://gitee.com/zqli6/k8s/raw/main/HPA/test/hpav2/hpav2-cpu-demo.yaml
