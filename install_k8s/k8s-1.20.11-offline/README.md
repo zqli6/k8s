@@ -6,10 +6,10 @@ docker pull swr.cn-southwest-2.myhuaweicloud.com/zqli_s/k8s-1.20.11-offline:26.8
 ```
 复制出文件可参考[Lzq文档](https://www.yuque.com/jianglai-iayzx/wkzfha/mlda3n2mcphvzo2o#wpXxl)
 ```
-docker run --rm \
-  -v ./:/host \
-  swr.cn-southwest-2.myhuaweicloud.com/zqli_s/k8s-1.20.11-offline:26.8.9 \
-  cp /data/k8s-1.20.11-offline.zip /host/
+docker create --name temp-extract \
+  swr.cn-southwest-2.myhuaweicloud.com/zqli_s/k8s-1.20.11-offline:26.8.9
+docker cp temp-extract:/data/k8s-1.20.11-offline.zip ./host/
+docker rm temp-extract
 ```
 ```
 ctr image mount swr.cn-southwest-2.myhuaweicloud.com/zqli_s/k8s-1.20.11-offline:26.8.9 /mnt/nerdctl
