@@ -9,9 +9,12 @@
   ```
   [root@master1 ~]# apt update && apt -y install nfs-kernel-server  
   [root@master1 ~]# systemctl status nfs-server.service
+  
   # centos系列  
   yum makecache && yum install nfs-utils -y  
-  rpcinfo -p | grep nfs  
+  systemctl start rpcbind;systemctl enable rpcbind
+  systemctl start nfs-server;systemctl enable nfs-server 
+  
   [root@master1 ~]# mkdir -pv /data/sc-nfs/
   [root@master1 ~]# vim /etc/exports
   # 授权 worker 节点的网段可以挂载
@@ -33,6 +36,8 @@
   - CentOS客户端
   ```
   yum makecache && yum install nfs-utils -y
+  systemctl start rpcbind;systemctl enable rpcbind
+  systemctl start nfs-server;systemctl enable nfs-server
   ```
   - 共享文件名为：`sc-nfs` 
   - 若不一致需修改`03-nfs-client-provisioner_lzq.yaml`
