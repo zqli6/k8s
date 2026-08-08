@@ -7,12 +7,12 @@ docker pull swr.cn-southwest-2.myhuaweicloud.com/zqli_s/k8s-1.20.11-offline:26.8
 复制出文件可参考[Lzq文档](https://www.yuque.com/jianglai-iayzx/wkzfha/mlda3n2mcphvzo2o#wpXxl)
 ```
 docker run --rm \
-  -v /data/softs:/host \
-  swr.cn-southwest-2.myhuaweicloud.com/zqli/jenkens-plugins:lzq1 \
-  cp /data/jenkins-plugins.tar.gz /host/
+  -v ./:/host \
+  swr.cn-southwest-2.myhuaweicloud.com/zqli_s/k8s-1.20.11-offline:26.8.9 \
+  cp /data/k8s-1.20.11-offline.zip /host/
 ```
 ```
-ctr image mount ccr.ccs.tencentyun.com/zqli/nerdctl-full:2.3.4-arm /mnt/nerdctl
+ctr image mount swr.cn-southwest-2.myhuaweicloud.com/zqli_s/k8s-1.20.11-offline:26.8.9 /mnt/nerdctl
 cp /mnt/nerdctl/usr/local/bin/nerdctl ./nerdctl
 ctr image unmount /mnt/nerdctl
 ```
