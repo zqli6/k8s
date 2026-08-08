@@ -7,8 +7,11 @@
 - 创建 NFS 共享  
   - 服务端：
   ```
-  [root@master1 ~]# apt update && apt -y install nfs-kernel-server
+  [root@master1 ~]# apt update && apt -y install nfs-kernel-server  
   [root@master1 ~]# systemctl status nfs-server.service
+  # centos系列  
+  yum makecache && yum install nfs-utils -y  
+  rpcinfo -p | grep nfs  
   [root@master1 ~]# mkdir -pv /data/sc-nfs/
   [root@master1 ~]# vim /etc/exports
   # 授权 worker 节点的网段可以挂载
@@ -23,9 +26,13 @@
   # 每个节点做nfs的地址解析
   echo "10.0.0.100 nfs.wang.org" >>/etc/hosts
   ```
-  - 客户端：安装nfs客户端挂载工具即可，不需要挂载nfs目录
+  - Debian客户端：安装nfs客户端挂载工具即可，不需要挂载nfs目录
   ```
   apt update && apt -y install nfs-common 或者 nfs-client
+  ```
+  - CentOS客户端
+  ```
+  yum makecache && yum install nfs-utils -y
   ```
   - 共享文件名为：`sc-nfs` 
   - 若不一致需修改`03-nfs-client-provisioner_lzq.yaml`
