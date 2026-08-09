@@ -17,6 +17,21 @@ cp /mnt/nerdctl/usr/local/bin/nerdctl ./nerdctl
 ctr image unmount /mnt/nerdctl
 ```
 
+## 部署环境
+
+| 项目       | 说明                                                    |
+| ---------- | ------------------------------------------------------- |
+| 部署日期   | 2026-07-29                                              |
+| 操作系统   | Ubuntu 24.04.4 LTS (Noble Numbat)                       |
+| 内核版本   | 6.8.0-136-generic                                       |
+| 架构       | x86_64 (amd64)                                          |
+| 云平台     | 阿里云 ECS                                              |
+| 网络环境   | Master 有公网，Worker 仅内网（172.30.0.0/24）           |
+| Cgroup     | v2（systemd 驱动）                                      |
+| 容器运行时 | Docker 29.6.2                                           |
+| 镜像仓库   | 华为云 SWR（swr.cn-southwest-2.myhuaweicloud.com/zqli） |
+
+
 ## 一、环境信息
 
 | 节点 | 内网 IP | 公网 IP | 角色 | OS | CPU |
