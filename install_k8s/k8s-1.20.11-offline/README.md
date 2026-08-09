@@ -8,13 +8,13 @@ docker pull swr.cn-southwest-2.myhuaweicloud.com/zqli_s/k8s-1.20.11-offline:26.8
 ```
 docker create --name temp-extract \
   swr.cn-southwest-2.myhuaweicloud.com/zqli_s/k8s-1.20.11-offline:26.8.9 echo
-docker cp temp-extract:/data/k8s-1.20.11-offline.zip ./host/
+docker cp temp-extract:/data/k8s-1.20.11-offline.zip ./
 docker rm temp-extract
 ```
 ```
-ctr image mount swr.cn-southwest-2.myhuaweicloud.com/zqli_s/k8s-1.20.11-offline:26.8.9 /mnt/nerdctl
-cp /mnt/nerdctl/usr/local/bin/nerdctl ./nerdctl
-ctr image unmount /mnt/nerdctl
+ctr image mount swr.cn-southwest-2.myhuaweicloud.com/zqli_s/k8s-1.20.11-offline:26.8.9 /mnt/
+cp /mnt/k8s-1.20.11-offline.zip ./
+ctr image unmount /mnt/
 ```
 
 ## 部署环境
