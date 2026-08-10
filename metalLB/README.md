@@ -48,7 +48,8 @@ peer 192.168.1.10 as-number 65000
 | `myASN` | 管理员在路由器上**允许**的 AS 号 | 问管理员给你分配了什么号 |
 
 ```
-ubectl apply -f https://gitee.com/zqli6/k8s/raw/main/metalLB/BGPPeer.yaml
+# 需修改peerAddress、peerASN、myASN
+kubectl apply -f https://gitee.com/zqli6/k8s/raw/main/metalLB/BGPPeer.yaml
 ```
 ```
 kubectl apply -f https://gitee.com/zqli6/k8s/raw/main/metalLB/BGPAdvertisement.yaml
