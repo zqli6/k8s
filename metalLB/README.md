@@ -1,14 +1,17 @@
+# 相关资料
 1. metalLB官网安装教程  
 <https://metallb.io/installation/>
 2. lizhiquan的文档  
 <https://www.yuque.com/jianglai-iayzx/sa1zul/lvzgvfv7kv1x2055#CvoOD>  
 
-3. 使用自建容器镜像源加速  
-4. To deploy metalLB with yaml  
+
+#  部署metalLB 
+## 1. To deploy metalLB with yaml  
 ```
 kubectl apply -f https://gitee.com/zqli6/k8s/raw/main/metalLB/metallb-native-v0.14.9-lzq.yaml
 ```
-# **metallb-IPAddressPool应用**  
+
+## 2. **metallb-IPAddressPool应用**  
 MetalLB 的 Layer2 模式本质是让 K8s 节点“冒充”外部设备，    
 所以 VIP（IPAddressPool） 必须在同一物理网段且未被网关或其他设备占用。  
 本yaml的addresses为`10.0.0.10-10.0.0.50`，请根据实际修改。  
@@ -16,7 +19,11 @@ MetalLB 的 Layer2 模式本质是让 K8s 节点“冒充”外部设备，
 kubectl apply -f https://gitee.com/zqli6/k8s/raw/main/metalLB/IPAddressPool.yaml
 ```
 
-# **metallb-L2Advertisement应用**  
+## 3. 部署L2或BGP模式
+
+L2（ARP广播）是在局域网里喊“IP是我的”，让同网段的机器知道；BGP（路由协议）是直接告诉上层路由器“IP在我这”，让路由器帮你把跨网段甚至外网的流量都转过来。
+
+ **metallb-L2Advertisement应用**  
 配置注释了限制网卡，可以指定为你的网卡名
 ```
 kubectl apply -f https://gitee.com/zqli6/k8s/raw/main/metalLB/L2Advertisement.yaml
