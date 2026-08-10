@@ -1,0 +1,12 @@
+# 3. 定义 BGP 广告，将池子与对等体关联
+apiVersion: metallb.io/v1beta1
+kind: BGPAdvertisement
+metadata:
+  name: local-bgp-adv
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+  - localip-pool                   # 使用你已有的 IP 地址池
+  peers:
+  - local-bgp-peer                 # 与上面的 BGPPeer 名称一致
+  aggregationLength: 32            # 将 IP 作为 /32 主机路由宣告，便于故障转移
