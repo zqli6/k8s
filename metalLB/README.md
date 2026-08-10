@@ -13,41 +13,25 @@ MetalLB 的 Layer2 模式本质是让 K8s 节点“冒充”外部设备，
 所以 VIP（IPAddressPool） 必须在同一物理网段且未被网关或其他设备占用。  
 本yaml的addresses为`10.0.0.10-10.0.0.50`，请根据实际修改。  
 ```
-kubectl apply -f https://gitee.com/zqli6/k8s/raw/main/metalLB/service-metallb-IPAddressPool.yaml
+kubectl apply -f https://gitee.com/zqli6/k8s/raw/main/metalLB/IPAddressPool.yaml
 ```
-```
-cat >service-metallb-IPAddressPool.yaml<<EOF 
-apiVersion: metallb.io/v1beta1
-kind: IPAddressPool
-metadata:
-  name: localip-pool
-  namespace: metallb-system
-spec:
-  addresses:
-    - 10.0.0.10-10.0.0.50
-  autoAssign: true
-  avoidBuggyIPs: true
-EOF
-```
+
 # **metallb-L2Advertisement应用**  
 配置注释了限制网卡，可以指定为你的网卡名
 ```
-kubectl apply -f https://gitee.com/zqli6/k8s/raw/main/metalLB/service-metallb-L2Advertisement.yaml
+kubectl apply -f https://gitee.com/zqli6/k8s/raw/main/metalLB/L2Advertisement.yaml
 ```
-```
-cat >service-metallb-L2Advertisement.yaml<<EOF 
-apiVersion: metallb.io/v1beta1
-kind: L2Advertisement
-metadata:
-  name: localip-pool-l2a
-  namespace: metallb-system
-spec:
-  ipAddressPools:
-    - localip-pool
-#  interfaces:
-#    - eth0
-EOF
-```
+
+
+
+
+
+
+
+
+
+
+
 # **开启 kube-proxy 的 strictARP**【推荐】  
   在 strictARP: false 的情况下，MetalLB 的 L2 模式可能会出现 ARP 响应延迟或不响应（尤其是使用 IPVS 模式时）。  
   * 查看Kube-Proxy 的 StrictARP 模式
