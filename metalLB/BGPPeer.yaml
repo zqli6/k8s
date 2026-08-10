@@ -1,0 +1,18 @@
+# 1. 定义 BGP 对等体（连接至你的物理路由器）
+apiVersion: metallb.io/v1beta2
+kind: BGPPeer
+metadata:
+  name: local-bgp-peer
+  namespace: metallb-system
+spec:
+  peerAddress: 192.168.1.1        # 【请替换】你的 BGP 路由器 IP 地址
+  peerASN: 65001                  # 【请替换】你的路由器 AS 号
+  myASN: 65000                    # 【请替换】你为 MetalLB 分配的 AS 号
+  # 可选：只允许特定节点与这个 BGP Peer 建立连接
+  nodeSelectors:
+  - matchExpressions:
+    - key: kubernetes.io/hostname
+      operator: In
+      values:
+      - node1
+      - node2
