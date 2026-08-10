@@ -21,7 +21,8 @@ kubectl apply -f https://gitee.com/zqli6/k8s/raw/main/metalLB/IPAddressPool.yaml
 
 ## 3. 部署L2或BGP模式
 
-L2（ARP广播）是在局域网里喊“IP是我的”，让同网段的机器知道；BGP（路由协议）是直接告诉上层路由器“IP在我这”，让路由器帮你把跨网段甚至外网的流量都转过来。
+**L2（ARP广播）**是在局域网里喊“IP是我的”，让同网段的机器知道；  
+**BGP（路由协议）**是直接告诉上层路由器“IP在我这”，让路由器帮你把跨网段甚至外网的流量都转过来。
 
 ### 3.1. metallb-L2Advertisement应用  
 配置注释了限制网卡，可以指定为你的网卡名
