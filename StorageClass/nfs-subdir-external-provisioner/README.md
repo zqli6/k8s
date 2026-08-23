@@ -27,7 +27,7 @@
   exportfs -rv
 
   # 每个节点做nfs的地址解析
-  echo "10.0.0.100 nfs.wang.org" >>/etc/hosts
+  echo "10.0.0.100 nfs.lzq.org" >>/etc/hosts
   ```
   - Debian客户端：安装nfs客户端挂载工具即可，不需要挂载nfs目录
   ```
