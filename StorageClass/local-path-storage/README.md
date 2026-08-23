@@ -1,7 +1,3 @@
-好的，我为你准备了一份精简版的 README，内容清晰、直白，非常适合放在 Gitee 仓库中。
-
----
-
 # Local Path Provisioner 本地存储配置
 
 ## 项目简介
