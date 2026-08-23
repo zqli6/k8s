@@ -103,7 +103,20 @@
     kubectl apply -f https://gitee.com/zqli6/k8s/raw/main/StorageClass/nfs-subdir-external-provisioner/03-nfs-client-provisioner_lzq.yaml
 ```
 > **前置要求**：使用 SWR 私有仓库镜像需提前创建镜像仓库 Secret，并为 ServiceAccount 绑定。详见 [SWR 私有仓库认证指南](https://gitee.com/zqli6/HA-cluster/blob/master/SWR-AUTH.md#%E5%9B%9B%E5%AE%9E%E4%BE%8B-1swr-%E7%A7%81%E6%9C%89%E4%BB%93%E5%BA%93%E8%AE%A4%E8%AF%81)
+```
+# 查看pod引用的SA
+kubectl get pod -n sc-nfs nfs-client-provisioner-5694876785-pd27l -o yaml | grep -i serviceaccount:
 
+# 创建镜像仓库secret，注：username，password为示例，真实值见lzq SWR仓库
+kubectl create secret docker-registry swr-auth -n sc-nfs \
+  --docker-server=swr.cn-southwest-2.myhuaweicloud.com \
+  --docker-username='cn-southwest-2@HST3WZ4B14TPK624PMYL' \
+  --docker-password='db32d40aeb810d091749ba2035a8d7ad6363a7afbb6911b5bb7ce514fdb46254'
+
+# SA补丁引用secret
+kubectl patch serviceaccount nfs-client-provisioner -n sc-nfs \
+  -p '{"imagePullSecrets": [{"name": "swr-auth"}]}'
+```
 > **重要**：部署前请确保 NFS_SERVER 的域名解析已配置（可在节点 hosts 或 DNS 中设置）。
 
 ---
