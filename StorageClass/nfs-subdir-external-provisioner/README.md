@@ -95,7 +95,7 @@
 ### 2.2 部署 Provisioner Deployment
 
 #### 选项一：使用官方镜像（原版）
-可参考官方仓库中的 `nfs-client-provisioner.yaml`
+可参考官方仓库中的 `nfs-client-provisioner.yaml`[点击查看](https://github.com/kubernetes-sigs/nfs-subdir-external-provisioner/blob/master/deploy/deployment.yaml)
 
 #### 选项二：使用 SWR 仓库镜像（lzq 定制版）
 执行以下命令部署：
