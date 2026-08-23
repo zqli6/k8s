@@ -9,3 +9,13 @@ allowVolumeExpansion: true   # 允许动态扩容
 parameters:
   archiveOnDelete: "true" # 设置为"false"时删除PVC不会保留数据,"true"则保留数据
   pathPattern: ${.PVC.namespace}-${.PVC.name}  # 设置pvc的自定义路径名称，增加可读性
+reclaimPolicy: Retain          # 【新增】强烈建议改为Retain，防止误删PVC导致NAS数据被清空
+volumeBindingMode: Immediate   # 【新增】立即绑定（默认值，显式写出更清晰）
+allowVolumeExpansion: true     # 【新增】允许在线扩容（以后扩PVC容量无需重建Pod）
+mountOptions:                  # 【新增】性能调优参数（解决你关心的“速率”问题）
+  - nfsvers=4.1                # 强制使用NFS v4.1，比v3性能更好
+  - rsize=1048576              # 读缓冲区1MB（默认32KB，调大后带宽跑满）
+  - wsize=1048576              # 写缓冲区1MB
+  - noatime                    # 关闭文件访问时间更新，减少NAS写入负担
+  - hard                       # 硬挂载，网络抖动时应用卡住但数据不丢
+  - timeo=600                  # 超时时间60秒，避免频繁重试
