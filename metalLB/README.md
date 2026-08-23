@@ -1,7 +1,9 @@
 # 相关资料
-1. metalLB官网安装教程  
+1. MetalLB GitHub  
+https://github.com/metallb/metallb
+2. metalLB官网安装教程  
 <https://metallb.io/installation/>
-2. lizhiquan的文档  
+3. lizhiquan的文档  
 <https://www.yuque.com/jianglai-iayzx/sa1zul/lvzgvfv7kv1x2055#CvoOD>  
 
 
