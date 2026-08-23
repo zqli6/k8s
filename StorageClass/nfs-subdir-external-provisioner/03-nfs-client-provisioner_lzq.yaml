@@ -33,11 +33,11 @@ spec:
             - name: PROVISIONER_NAME
               value: k8s-sigs.io/nfs-subdir-external-provisioner #名称确保与 nfs-StorageClass.yaml文件中的provisioner名称保持一致
             - name: NFS_SERVER
-              value: nfs.wang.org # NFS SERVER_IP 
+              value: nfs.lzq.org # NFS SERVER_IP 
             - name: NFS_PATH
               value: /data/sc-nfs  # NFS 共享目录
       volumes:
         - name: nfs-client-root
           nfs:
-            server: nfs.wang.org  # NFS SERVER_IP 
+            server: nfs.lzq.org  # NFS SERVER_IP 也可以直接写nas的ip，需确认nas支持nfs协议
             path: /data/sc-nfs  # NFS 共享目录
