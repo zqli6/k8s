@@ -52,6 +52,7 @@
   - **需要做NFS_SERVER的域名解析**  
   - 官方镜像：nfs-client-provisioner.yaml  
   - SWR仓库镜像：nfs-client-provisioner_lzq.yaml  
+- 使用lzq SWR仓库镜像需创建镜像仓库secret给SA账号使用，详见 [SWR 私有仓库认证](https://gitee.com/zqli6/HA-cluster/blob/master/SWR-AUTH.md#%E5%9B%9B%E5%AE%9E%E4%BE%8B-1swr-%E7%A7%81%E6%9C%89%E4%BB%93%E5%BA%93%E8%AE%A4%E8%AF%81)
   ```
   kubectl apply -f https://gitee.com/zqli6/k8s/raw/main/StorageClass/nfs-subdir-external-provisioner/03-nfs-client-provisioner_lzq.yaml
   ```
