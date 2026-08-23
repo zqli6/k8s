@@ -10,7 +10,8 @@
 
 ## 快速部署
 ```bash
-kubectl apply -f apiVersion\ v1.txt
+# 使用lzq SWR镜像仓库加速
+kubectl apply -f https://gitee.com/zqli6/k8s/raw/main/StorageClass/local-path-storage/local-path-storage.yaml
 ```
 
 验证部署：
