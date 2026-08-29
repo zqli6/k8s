@@ -80,18 +80,21 @@ if [ -n "${PRIVATE_REGISTRY}" ]; then
         echo "  capabilities = [\"pull\", \"resolve\"]"
     } > "$HOSTS_TOML"
 
-    # 确保 config.toml 启用 certs.d（config_path）
-    if ! grep -q 'config_path = "/etc/containerd/certs.d"' /etc/containerd/config.toml; then
+    # 确保 config.toml 启用 certs.d（替换默认空值，避免重复键导致 containerd 启动失败）
+    if grep -q '^[[:space:]]*config_path = ""' /etc/containerd/config.toml; then
+        sed -i 's|^[[:space:]]*config_path = ""|      config_path = "/etc/containerd/certs.d"|' /etc/containerd/config.toml
+    elif ! grep -q '^[[:space:]]*config_path = "/etc/containerd/certs.d"' /etc/containerd/config.toml; then
         sed -i 's|\(\[plugins."io.containerd.grpc.v1.cri".registry\]\)|\1\n      config_path = "/etc/containerd/certs.d"|' /etc/containerd/config.toml
-        echo "[✓] containerd 已启用 certs.d 目录"
     fi
+    echo "[✓] containerd 已启用 certs.d 目录"
 
     # private 组织：凭据写进 config.toml 的 registry.configs.auth（containerd 1.6 支持）
     # 控制面/kube-vip 是 static pod 由 kubelet 直接拉，不认 imagePullSecrets，故须配在此。
     if [ "${SWR_PRIVATE}" == "true" ]; then
         if [ -z "${SWR_AK}" ] || [ -z "${SWR_LOGIN_KEY}" ]; then
             echo "[✗] SWR 为 private 组织，但 cluster.env 未填 SWR_AK / SWR_LOGIN_KEY" >&2
-            echo "    控制面 static pod 将拉不到镜像、init 会失败，请先填凭据。" >&2
+            echo "    请手动在 SWR 控制台生成登录指令，将 AK 和登录密钥填入 cluster.env 后重新执行本脚本。" >&2
+            echo "    未完成认证前，控制面 static pod 无法从 SWR 拉取镜像，kubeadm init 会失败。" >&2
             exit 1
         fi
         if ! grep -q "registry.configs.\"${REG_HOST}\".auth" /etc/containerd/config.toml; then

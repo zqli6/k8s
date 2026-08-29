@@ -43,10 +43,40 @@ else
     log_err "不支持的架构: $ARCH（需要 x86_64）"
 fi
 
-# --- 2. 硬件资源 ---
-echo ""
-echo "--- 硬件资源 ---"
-CPU_CORES=$(nproc)
+# --- 1.1 节点拓扑配置检查 ---
+LOCAL_IP=$(hostname -I | awk '{print $1}')
+CONFIG_IPS=("${ALL_IPS[@]}")
+for ((i=0; i<${#CONFIG_IPS[@]}; i++)); do
+    for ((j=i+1; j<${#CONFIG_IPS[@]}; j++)); do
+        if [ "${CONFIG_IPS[$i]}" == "${CONFIG_IPS[$j]}" ]; then
+            log_err "节点 IP 重复: ${CONFIG_IPS[$i]}"
+        fi
+    done
+done
+if [ "$MASTER_COUNT" -lt 1 ]; then
+    log_err "至少需要 1 个 master"
+elif [ $((MASTER_COUNT % 2)) -eq 0 ]; then
+    log_err "master 节点数为 ${MASTER_COUNT}（必须使用奇数：1/3/5/7）"
+else
+    log_ok "master 节点数: ${MASTER_COUNT}（奇数）"
+fi
+if printf '%s\n' "${ALL_IPS[@]}" | grep -qx "$VIP"; then
+    log_err "VIP ${VIP} 与节点 IP 重复"
+else
+    log_ok "VIP ${VIP} 未与节点 IP 重复"
+fi
+if printf '%s\n' "${ALL_IPS[@]}" | grep -qx "$LOCAL_IP"; then
+    log_ok "本机 IP 在当前节点列表中"
+else
+    log_err "本机 IP ${LOCAL_IP} 不在当前 MASTER_NODES/WORKER_NODES 列表中"
+fi
+
+if [ "${KUBE_PROXY_MODE}" != "ipvs" ] && [ "${KUBE_PROXY_MODE}" != "iptables" ]; then
+    log_err "不支持的 kube-proxy 模式: ${KUBE_PROXY_MODE}（Kubernetes 1.28 本方案仅支持 ipvs 或 iptables）"
+else
+    log_ok "kube-proxy 模式: ${KUBE_PROXY_MODE}"
+fi
+
 if [ "$CPU_CORES" -ge 2 ]; then
     log_ok "CPU 核数: ${CPU_CORES} (>=2)"
 else

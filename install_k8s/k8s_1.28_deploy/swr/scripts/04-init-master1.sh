@@ -175,7 +175,7 @@ cgroupDriver: systemd
 ---
 apiVersion: kubeproxy.config.k8s.io/v1alpha1
 kind: KubeProxyConfiguration
-mode: ipvs
+mode: ${KUBE_PROXY_MODE}
 EOF
 echo "[✓] kubeadm 配置已生成: /etc/kubernetes/kubeadm-config.yaml"
 

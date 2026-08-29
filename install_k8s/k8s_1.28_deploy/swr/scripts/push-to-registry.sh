@@ -33,7 +33,7 @@ echo ""
 REGISTRY_HOST=$(echo "${PRIVATE_REGISTRY}" | cut -d/ -f1)   # swr.<region>.myhuaweicloud.com
 echo "--- 登录 SWR ${REGISTRY_HOST} ---"
 if [ -z "${SWR_AK}" ] || [ -z "${SWR_LOGIN_KEY}" ]; then
-    echo "[✗] 未填 SWR_AK / SWR_LOGIN_KEY，请先在 config/cluster.env 配置"
+    echo "[✗] 未填 SWR_AK / SWR_LOGIN_KEY，请手动在 SWR 控制台生成登录指令并填入 config/cluster.env" >&2
     echo "    获取：SWR 控制台 → 我的凭证 → 访问密钥(AK/SK) → 生成登录指令"
     exit 1
 fi

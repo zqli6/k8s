@@ -1,9 +1,77 @@
 # Kubernetes 1.28 部署 · 华为云 SWR 私有仓库版
 
-> 3 Master + 6 Worker | containerd | kube-vip HA | Calico | 证书 10 年
+> 支持 1/3/5 个 Master 与任意数量 Worker。默认示例可按需修改；本次实测拓扑为 1 Master + 3 Worker。
 > 所有镜像从华为云 SWR（private 组织）拉取。与 online/offline/private-registry 平级、独立自包含。
 
-## 与 Harbor 版区别
+## 本次实验验证结果（1 Master + 3 Worker）
+
+已在以下节点按本文档完成真实部署验证：
+
+| 项目 | 结果 |
+|------|------|
+| 节点 | `192.168.104.231` master，`232/233/234` worker |
+| OS / 架构 | CentOS 7.9 / x86_64 |
+| Kubernetes | v1.28.15 |
+| containerd | 1.6.33，四台均为运行时 |
+| SWR private 认证 | containerd CRI 拉取成功 |
+| kube-vip | v0.8.0，SWR 镜像拉取成功，VIP 可达 |
+| Calico | v3.26.4，纯 VXLAN，4/4 Ready |
+| 节点状态 | 4/4 Ready |
+| API Server / etcd | 健康 |
+| 证书 | 叶子证书已续期到 2036 年 |
+| 最终验收 | 19 项通过，0 项失败 |
+
+本次实验还修正了以下真实问题：containerd 默认 `config_path` 重复导致启动失败、SWR 用户名重复拼接、CentOS RPM kubelet 被旧 `/usr/local/bin/kubelet` systemd 单元覆盖、动态节点一键分发未调用、验收脚本误将未推送的 `busybox:latest` 当作 DNS 前置条件。完整多 master HA 尚未在本次 1 master 实验中验证，需使用 3 个或其他奇数 master 重新执行控制平面 join。
+
+## kube-proxy Service 转发模式
+
+当前方案在 `Kubernetes v1.28.15 + CentOS 7.9 + kernel 3.10` 上验证的是 IPVS：
+
+```bash
+KUBE_PROXY_MODE="ipvs"
+```
+
+新集群由 `scripts/04-init-master1.sh` 把该值写入 `KubeProxyConfiguration.mode`。可切换到 `iptables`，但必须先确认 `01-system-init.sh` 的内核和网络前置条件。`nftables` 不属于本方案在 Kubernetes 1.28/CentOS 7 的支持和验证范围，不能仅把值改成 `nftables`。
+
+已有集群切换模式需要修改 `kube-system/kube-proxy` ConfigMap 后滚动重启其 DaemonSet；切换后用 `ipvsadm -Ln` 或 `iptables-save` 检查实际规则。
+
+## 3 Master 高可用验证
+
+当前 `1 Master + 3 Worker` 已实测通过。验证 3 Master 前必须先完整清理全部节点，不能把已加入集群的 worker 直接改成 master。将配置改为三个奇数 master，例如：
+
+```bash
+MASTER_NODES=(
+    "192.168.104.231 master1"
+    "192.168.104.232 master2"
+    "192.168.104.233 master3"
+)
+WORKER_NODES=(
+    "192.168.104.234 node1"
+)
+```
+
+重新部署后必须确认：3 个控制平面节点均为 `Ready`；`etcd` 成员数为 3 且均为 started；`kube-apiserver`、`kube-controller-manager`、`kube-scheduler` 和 kube-vip 各有 3 个实例；VIP `192.168.104.200:6443` 可连接；Calico DaemonSet 覆盖全部节点。仅满足这些条件后，才能将结果记录为 3 Master HA 验证通过。
+
+
+重新使用已有节点前，先阅读并按需执行 [`CLEANUP-README.md`](CLEANUP-README.md)。其中包含 kubeadm、kubelet、etcd、Calico、Flannel、CNI 网卡、iptables/IPVS 及旧配置的清理步骤。清理命令具有破坏性，请先确认节点无业务数据。
+
+## 节点信息可编辑，且保留多节点机制
+
+本目录不是固定的 3 Master + 6 Worker。编辑 `config/cluster.env` 中的 `MASTER_NODES` 和 `WORKER_NODES` 即可用于实验拓扑；脚本会自动重新派生 IP、主机名、节点总数和验收数量。例如单 master 测试：
+
+```bash
+MASTER_NODES=(
+    "192.168.104.231 master1"
+)
+WORKER_NODES=(
+    "192.168.104.232 node1"
+    "192.168.104.233 node2"
+    "192.168.104.234 node3"
+)
+```
+
+需要验证高可用时，将 `MASTER_NODES` 改为 3 个或其他奇数 master，worker 仍可按需增减。不要把节点 IP 重复配置，也不要把 VIP 配成节点 IP。`00-env-check.sh` 会检查这些约束。
+
 
 | 项 | Harbor | 本 SWR 版 |
 |----|--------|----------|
@@ -41,20 +109,18 @@
 
 ## 分步部署命令速查
 
-| 步骤 | 执行节点 | 命令 | 说明 |
-|------|---------|------|------|
-| 0 | 有网跳板机 | `./push-to-registry.sh --pull` | 部署前先推 11 镜像到 SWR（`--platform linux/amd64` 转单平台，SWR 拒多平台 OCI index）。仅需一次 |
-| 1 | 全部 9 节点 | `./00-env-check.sh` | 环境检查（只读） |
-| 2 | 全部 9 节点 | `./01-system-init.sh` | 系统初始化（swap/SELinux/内核/sysctl/arp_ignore） |
-| 3 | 全部 9 节点 | `./02-install-containerd.sh` | 装 containerd + ★配 SWR private 认证（写 `config.toml` 的 `registry.configs.<host>.auth`，来源 `SWR_AK`/`SWR_LOGIN_KEY`） |
-| 4 | 全部 9 节点 | `./03-install-k8s.sh` | 装 kubeadm/kubelet/kubectl |
-| 5 | 仅 master1 | `./04-init-master1.sh` | kube-vip + kubeadm init（镜像从 SWR 拉），生成 `/etc/kubernetes/deploy/join.env` |
-| — | master1 → 其余节点 | `scp /etc/kubernetes/deploy/join.env root@<节点>:/etc/kubernetes/deploy/` | 分发 join 凭据（一键版自动，分步需手动） |
-| 6 | 仅 master2、master3（串行） | `./05-join-master.sh` | 加入控制平面，逐台等 etcd 健康 |
-| 7 | 仅 node1~6（可并行） | `./06-join-worker.sh` | 加入 worker |
-| 8 | 仅 master1 | `./07-install-calico.sh` | 装 Calico CNI（用本地 `manifests/calico.yaml`，VXLAN） |
-| 9 | 每个 master（串行） | `./08-renew-certs.sh` | 证书续期 10 年 |
-| 10 | 仅 master1 | `./09-verify.sh` | 20 项验收，全绿即成功 |
+| 0 | 有网跳板机（可选） | `./push-to-registry.sh --pull` | **可选**：仅当 SWR 缺少所需镜像时执行；镜像已存在时跳过。 |
+| 1 | 当前配置中的全部节点 | `./00-env-check.sh` | 环境检查（只读） |
+| 2 | 当前配置中的全部节点 | `./01-system-init.sh` | 系统初始化（swap/SELinux/内核/sysctl/arp_ignore） |
+| 3 | 当前配置中的全部节点 | `./02-install-containerd.sh` | 安装/配置 containerd 和 SWR private 认证 |
+| 4 | 当前配置中的全部节点 | `./03-install-k8s.sh` | 安装 kubeadm/kubelet/kubectl |
+| 5 | 仅 master1 | `./04-init-master1.sh` | kube-vip + kubeadm init |
+| — | master1 → 其余节点 | 分发 `join.env` | 一键版自动，分步执行需手动分发 |
+| 6 | 其余 master（串行） | `./05-join-master.sh` | 仅当 `MASTER_COUNT > 1` 时执行 |
+| 7 | 当前配置中的 worker（可并行） | `./06-join-worker.sh` | 加入 worker |
+| 8 | 仅 master1 | `./07-install-calico.sh` | 安装 Calico CNI（VXLAN） |
+| 9 | 每个 master（串行） | `./08-renew-certs.sh` | 证书续期 |
+| 10 | 仅 master1 | `./09-verify.sh` | 按当前节点数量验收 |
 
 > 一键：拷 `swr/` 到 master1 → `./deploy-all.sh`（自动分发 join.env、串行 join master、并行 join worker）。支持 `--from N`、`--only N`、`--dry-run`。
 > 与 Harbor 版的唯一差异：认证走 SWR AK/登录密钥、且写在 `config.toml` 的 `registry.configs`（见下）；其余步骤编号与逻辑一致。

@@ -86,11 +86,20 @@ check "Pod CIDR 不与宿主网段冲突" "echo '$POD_CIDR_ACTUAL' | grep -v '19
 # --- 5. DNS 测试 ---
 echo ""
 echo "--- DNS 功能测试 ---"
-kubectl run dns-test --image=${IMAGE_REPOSITORY}/busybox:latest --restart=Never --rm -i --wait --timeout=30s -- nslookup kubernetes.default 2>/dev/null && {
-    check "集群 DNS 解析正常" "true"
-} || {
-    check "集群 DNS 解析正常" "false"
-}
+# SWR 版只使用已确认存在的镜像；busybox 不属于 kubeadm 必需镜像，
+# 不应因为仓库中没有 busybox:latest 而误判集群 DNS。
+DNS_IMAGE="${DNS_TEST_IMAGE:-}"
+if [ -z "$DNS_IMAGE" ]; then
+    echo "[!] 未配置 DNS_TEST_IMAGE，跳过 Pod 内 DNS 测试"
+    echo "    如需测试，请先将一个带 nslookup 的测试镜像推送到 SWR，"
+    echo "    再执行 DNS_TEST_IMAGE=<registry/path/image:tag> ./09-verify.sh"
+else
+    kubectl run dns-test --image="$DNS_IMAGE" --restart=Never --rm -i --wait --timeout=30s -- nslookup kubernetes.default 2>/dev/null && {
+        check "集群 DNS 解析正常" "true"
+    } || {
+        check "集群 DNS 解析正常" "false"
+    }
+fi
 
 # --- 6. 证书 ---
 echo ""
@@ -144,7 +153,7 @@ if [ $FAIL -eq 0 ]; then
     echo -e "${GREEN}"
     echo "  ╔══════════════════════════════════════╗"
     echo "  ║   集群部署验收通过！                    ║"
-    echo "  ║   K8s v${KUBE_VERSION} | 3M + 6W | HA  ║"
+    echo "  ║   K8s v${KUBE_VERSION} | ${MASTER_COUNT}M + ${WORKER_COUNT}W  ║"
     echo "  ╚══════════════════════════════════════╝"
     echo -e "${NC}"
 else

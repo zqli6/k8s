@@ -29,31 +29,58 @@ while [[ $# -gt 0 ]]; do
 done
 
 # --- 工具函数 ---
+SSH_OPTS=(-o StrictHostKeyChecking=no)
+LOCAL_IP=$(hostname -I | awk '{print $1}')
+ssh_node() {
+    local node="$1"
+    shift
+    if [ "$node" == "$LOCAL_IP" ]; then
+        bash -c "$*"
+    else
+        ssh "${SSH_OPTS[@]}" root@"$node" "$@"
+    fi
+}
+scp_node() {
+    local source="$1"
+    local destination="$2"
+    local target="${destination#root@}"
+    local node="${target%%:*}"
+    local path="${target#*:}"
+    if [ "$node" == "$LOCAL_IP" ]; then
+        mkdir -p "$(dirname "$path")"
+        cp -f "$source" "$path"
+    else
+        scp "${SSH_OPTS[@]}" "$source" "$destination"
+    fi
+}
+
 log() { echo -e "\033[1;36m[DEPLOY $(date +%H:%M:%S)]\033[0m $1"; }
 err() { echo -e "\033[0;31m[ERROR]\033[0m $1"; exit 1; }
 
 run_on_nodes() {
     local nodes=("$@")
-    local script="${nodes[-1]}"
-    unset 'nodes[-1]'
+    local last_index=$((${#nodes[@]} - 1))
+    local script="${nodes[$last_index]}"
+    unset "nodes[$last_index]"
 
     for node in "${nodes[@]}"; do
         log "  → $node: $script"
         if [ "$DRY_RUN" == "true" ]; then continue; fi
-        ssh -o StrictHostKeyChecking=no root@"$node" "bash -s" < "${SCRIPT_DIR}/${script}"
+        ssh_node "$node" "bash /opt/k8s-deploy/scripts/$script"
     done
 }
 
 run_on_nodes_parallel() {
     local nodes=("$@")
-    local script="${nodes[-1]}"
-    unset 'nodes[-1]'
+    local last_index=$((${#nodes[@]} - 1))
+    local script="${nodes[$last_index]}"
+    unset "nodes[$last_index]"
     local pids=()
 
     for node in "${nodes[@]}"; do
         log "  → $node: $script (并行)"
         if [ "$DRY_RUN" == "true" ]; then continue; fi
-        ssh -o StrictHostKeyChecking=no root@"$node" "bash -s" < "${SCRIPT_DIR}/${script}" &
+        ssh_node "$node" "bash -s" < "${SCRIPT_DIR}/${script}" &
         pids+=($!)
     done
 
@@ -104,23 +131,46 @@ EOF
 # --- 上传脚本和配置到所有节点 ---
 distribute_files() {
     log "分发脚本和配置到所有节点..."
-    if [ "$DRY_RUN" == "true" ]; then return 0; fi
+    if [ "$DRY_RUN" == "true" ]; then
+        for node in "${ALL_NODES[@]}"; do
+            log "  → $node: config/cluster.env + scripts/*.sh + manifests + tools"
+        done
+        return 0
+    fi
 
     for node in "${ALL_NODES[@]}"; do
-        ssh -o StrictHostKeyChecking=no root@"$node" "mkdir -p /opt/k8s-deploy/config /opt/k8s-deploy/scripts" 2>/dev/null
-        scp -q "${SCRIPT_DIR}/../config/cluster.env" root@"$node":/opt/k8s-deploy/config/
-        for script in 00-env-check.sh 01-system-init.sh 02-install-containerd.sh 03-install-k8s.sh; do
-            scp -q "${SCRIPT_DIR}/${script}" root@"$node":/opt/k8s-deploy/scripts/
+        log "  → $node: 准备 /opt/k8s-deploy"
+        ssh_node "$node" \
+            "mkdir -p /opt/k8s-deploy/config /opt/k8s-deploy/scripts /opt/k8s-deploy/manifests /opt/k8s-deploy/tools"
+        scp_node \
+            "${SCRIPT_DIR}/../config/cluster.env" \
+            root@"$node":/opt/k8s-deploy/config/cluster.env
+        for script in "${SCRIPT_DIR}"/*.sh; do
+            scp_node "$script" \
+                root@"$node":/opt/k8s-deploy/scripts/
         done
+        scp_node \
+            "${SCRIPT_DIR}/../manifests/calico.yaml" \
+            root@"$node":/opt/k8s-deploy/manifests/calico.yaml
+        scp_node \
+            "${SCRIPT_DIR}/../tools/update-kubeadm-cert.sh" \
+            root@"$node":/opt/k8s-deploy/tools/update-kubeadm-cert.sh
     done
     echo "[✓] 文件分发完成"
 }
 
 # ============================================================
+# 部署前必须先分发配置和脚本。
+# 远程脚本通过 stdin 执行，SCRIPT_DIR 不指向仓库目录，
+# 因此依赖 /opt/k8s-deploy/config/cluster.env 等 fallback 路径。
+# ============================================================
+distribute_files
+
+# ============================================================
 echo ""
 echo "╔══════════════════════════════════════════════════════════╗"
 echo "║  Kubernetes v${KUBE_VERSION} 集群一键部署                  ║"
-echo "║  3 Master + 6 Worker | kube-vip HA | Calico CNI        ║"
+echo "║  ${MASTER_COUNT} Master + ${WORKER_COUNT} Worker | kube-vip HA | Calico CNI ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo ""
 echo "集群拓扑："
@@ -191,12 +241,16 @@ if should_run 5; then
             m_name="${MASTER_NAMES[$idx]}"
             if [ "$DRY_RUN" != "true" ]; then
                 log "  → $m_ip ($m_name): 分发 join.env + 05-join-master.sh"
-                ssh root@"$m_ip" "mkdir -p /etc/kubernetes/deploy"
-                scp -q /etc/kubernetes/deploy/join.env root@"$m_ip":/etc/kubernetes/deploy/
-                ssh root@"$m_ip" "bash -s" < "${SCRIPT_DIR}/05-join-master.sh"
+                ssh_node "$m_ip" "mkdir -p /etc/kubernetes/deploy"
+                scp_node /etc/kubernetes/deploy/join.env root@"$m_ip":/etc/kubernetes/deploy/
+                ssh_node "$m_ip" "bash /opt/k8s-deploy/scripts/05-join-master.sh"
                 sleep 10
                 kubectl get nodes
-                # 校验 etcd 健康后再加下一台
+                # 校验新 master 已加入并且 etcd 成员数与当前控制面数量一致
+                CP_READY=$(kubectl get nodes -l node-role.kubernetes.io/control-plane --no-headers 2>/dev/null | grep -c ' Ready' || true)
+                if [ "$CP_READY" -lt $((idx + 1)) ]; then
+                    err "$m_name 已加入但控制面 Ready 数量不足 (${CP_READY}/$((idx + 1)) )"
+                fi
                 kubectl get --raw='/healthz/etcd' &>/dev/null && log "  → $m_name 加入完成，etcd 健康 ✓" || err "etcd 异常，停止加入 master"
             else
                 log "  → $m_ip ($m_name): 05-join-master.sh (串行)"
@@ -215,15 +269,15 @@ if should_run 6; then
         refresh_join_env
         # 分发 join.env
         for worker in "${ALL_WORKERS[@]}"; do
-            ssh root@"$worker" "mkdir -p /etc/kubernetes/deploy"
-            scp -q /etc/kubernetes/deploy/join.env root@"$worker":/etc/kubernetes/deploy/
+            ssh_node "$worker" "mkdir -p /etc/kubernetes/deploy"
+            scp_node /etc/kubernetes/deploy/join.env root@"$worker":/etc/kubernetes/deploy/
         done
 
         # 并行 join
         pids=()
         for worker in "${ALL_WORKERS[@]}"; do
             log "  → $worker: 06-join-worker.sh (并行)"
-            ssh root@"$worker" "bash -s" < "${SCRIPT_DIR}/06-join-worker.sh" &
+            ssh_node "$worker" "bash /opt/k8s-deploy/scripts/06-join-worker.sh" &
             pids+=($!)
         done
         for pid in "${pids[@]}"; do wait "$pid"; done
@@ -261,7 +315,7 @@ if should_run 8; then
             if [ "$master" == "$MASTER1_IP" ]; then
                 bash "${SCRIPT_DIR}/08-renew-certs.sh"
             else
-                ssh root@"$master" "bash -s" < "${SCRIPT_DIR}/08-renew-certs.sh"
+                ssh_node "$master" "bash -s" < "${SCRIPT_DIR}/08-renew-certs.sh"
             fi
             sleep 15
             # 校验 etcd 健康
@@ -289,7 +343,7 @@ fi
 if [ "$DRY_RUN" != "true" ] && should_run 6; then
     log "清理 join.env 密钥..."
     for node in "${ALL_NODES[@]}"; do
-        ssh root@"$node" "rm -f /etc/kubernetes/deploy/join.env" 2>/dev/null || true
+        ssh_node "$node" "rm -f /etc/kubernetes/deploy/join.env" 2>/dev/null || true
     done
     rm -f /etc/kubernetes/deploy/join.env
     echo "[✓] join 密钥已清理"
