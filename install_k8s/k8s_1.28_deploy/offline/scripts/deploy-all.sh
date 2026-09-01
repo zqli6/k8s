@@ -29,31 +29,60 @@ while [[ $# -gt 0 ]]; do
 done
 
 # --- 工具函数 ---
+SSH_OPTS=(-o StrictHostKeyChecking=no)
+LOCAL_IP=$(hostname -I | awk '{print $1}')
+ssh_node() {
+    local node="$1"
+    shift
+    if [ "$node" == "$LOCAL_IP" ]; then
+        bash -c "$*"
+    else
+        ssh "${SSH_OPTS[@]}" root@"$node" "$@"
+    fi
+}
+scp_node() {
+    local source="$1"
+    local destination="$2"
+    local target="${destination#root@}"
+    local node="${target%%:*}"
+    local path="${target#*:}"
+    if [ "$node" == "$LOCAL_IP" ]; then
+        if [ "$(readlink -f "$source" 2>/dev/null)" != "$(readlink -f "$path" 2>/dev/null)" ]; then
+            mkdir -p "$(dirname "$path")"
+            cp -f "$source" "$path"
+        fi
+    else
+        scp "${SSH_OPTS[@]}" "$source" "$destination"
+    fi
+}
+
 log() { echo -e "\033[1;36m[DEPLOY $(date +%H:%M:%S)]\033[0m $1"; }
 err() { echo -e "\033[0;31m[ERROR]\033[0m $1"; exit 1; }
 
 run_on_nodes() {
     local nodes=("$@")
-    local script="${nodes[-1]}"
-    unset 'nodes[-1]'
+    local last_index=$((${#nodes[@]} - 1))
+    local script="${nodes[$last_index]}"
+    unset "nodes[$last_index]"
 
     for node in "${nodes[@]}"; do
         log "  → $node: $script"
         if [ "$DRY_RUN" == "true" ]; then continue; fi
-        ssh -o StrictHostKeyChecking=no root@"$node" "bash -s" < "${SCRIPT_DIR}/${script}"
+        ssh_node "$node" "bash /opt/k8s-deploy/offline/scripts/$script"
     done
 }
 
 run_on_nodes_parallel() {
     local nodes=("$@")
-    local script="${nodes[-1]}"
-    unset 'nodes[-1]'
+    local last_index=$((${#nodes[@]} - 1))
+    local script="${nodes[$last_index]}"
+    unset "nodes[$last_index]"
     local pids=()
 
     for node in "${nodes[@]}"; do
         log "  → $node: $script (并行)"
         if [ "$DRY_RUN" == "true" ]; then continue; fi
-        ssh -o StrictHostKeyChecking=no root@"$node" "bash -s" < "${SCRIPT_DIR}/${script}" &
+        ssh_node "$node" "bash /opt/k8s-deploy/offline/scripts/$script" &
         pids+=($!)
     done
 
@@ -106,26 +135,53 @@ distribute_files() {
     log "分发脚本和配置到所有节点..."
     if [ "$DRY_RUN" == "true" ]; then return 0; fi
 
+    # 代码/配置来自当前 offline 目录；镜像和 RPM 优先从 OFFLINE_SOURCE_DIR 读取，
+    # 这样可复用服务器上已有的离线介质，不必从客户端重复上传大文件。
     OFFLINE_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+    if [ -n "${OFFLINE_SOURCE_DIR:-}" ] && [ -d "${OFFLINE_SOURCE_DIR}/images" ]; then
+        RESOURCE_ROOT="${OFFLINE_SOURCE_DIR}"
+    else
+        RESOURCE_ROOT="${OFFLINE_ROOT}"
+    fi
     for node in "${ALL_NODES[@]}"; do
-        ssh -o StrictHostKeyChecking=no root@"$node" "mkdir -p /opt/k8s-deploy/config /opt/k8s-deploy/scripts /opt/k8s-deploy/tools /opt/k8s-deploy/manifests /opt/k8s-deploy/images /opt/k8s-deploy/packages" 2>/dev/null
-        scp -q "${OFFLINE_ROOT}/config/cluster.env" root@"$node":/opt/k8s-deploy/config/
-        scp -q "${OFFLINE_ROOT}/tools/"* root@"$node":/opt/k8s-deploy/tools/ 2>/dev/null
-        scp -q "${OFFLINE_ROOT}/manifests/"* root@"$node":/opt/k8s-deploy/manifests/ 2>/dev/null
-        scp -q "${OFFLINE_ROOT}/images/"*.tar root@"$node":/opt/k8s-deploy/images/ 2>/dev/null
-        scp -q "${OFFLINE_ROOT}/packages/"*.rpm root@"$node":/opt/k8s-deploy/packages/ 2>/dev/null
-        for script in "${OFFLINE_ROOT}"/scripts/*.sh; do
-            scp -q "$script" root@"$node":/opt/k8s-deploy/scripts/
+        log "  → $node: 准备 /opt/k8s-deploy/offline"
+        ssh_node "$node" "mkdir -p /opt/k8s-deploy/offline/config /opt/k8s-deploy/offline/scripts /opt/k8s-deploy/offline/tools /opt/k8s-deploy/offline/manifests /opt/k8s-deploy/offline/images /opt/k8s-deploy/offline/packages"
+        scp_node "${OFFLINE_ROOT}/config/cluster.env" root@"$node":/opt/k8s-deploy/offline/config/cluster.env
+        for resource in "${OFFLINE_ROOT}"/tools/* "${OFFLINE_ROOT}"/manifests/*; do
+            [ -f "$resource" ] || continue
+            scp_node "$resource" root@"$node":/opt/k8s-deploy/offline/"$(basename "$(dirname "$resource")")"/"$(basename "$resource")"
         done
+        for script in "${OFFLINE_ROOT}"/scripts/*.sh; do
+            scp_node "$script" root@"$node":/opt/k8s-deploy/offline/scripts/"$(basename "$script")"
+        done
+        if [ "$node" != "$LOCAL_IP" ]; then
+            for image in "${RESOURCE_ROOT}"/images/*.tar; do
+                scp_node "$image" root@"$node":/opt/k8s-deploy/offline/images/"$(basename "$image")"
+            done
+            for rpm in "${RESOURCE_ROOT}"/packages/*.rpm; do
+                scp_node "$rpm" root@"$node":/opt/k8s-deploy/offline/packages/"$(basename "$rpm")"
+            done
+            scp_node "${RESOURCE_ROOT}/packages/repodata/repomd.xml" root@"$node":/opt/k8s-deploy/offline/packages/repodata/repomd.xml
+            for metadata in "${RESOURCE_ROOT}"/packages/repodata/*; do
+                [ -f "$metadata" ] || continue
+                scp_node "$metadata" root@"$node":/opt/k8s-deploy/offline/packages/repodata/"$(basename "$metadata")"
+            done
+        fi
     done
-    echo "[✓] 文件+镜像分发完成（含 images/ 离线 tar）"
+    echo "[✓] 文件/配置分发完成（资源源: ${RESOURCE_ROOT}）"
 }
 
 # ============================================================
+# 部署前必须先分发配置和脚本。
+# 远程脚本通过 stdin 执行，SCRIPT_DIR 不指向仓库目录，
+# 因此依赖 /opt/k8s-deploy/config/cluster.env 等 fallback 路径。
+# ============================================================
+distribute_files
+
 echo ""
 echo "╔══════════════════════════════════════════════════════════╗"
 echo "║  Kubernetes v${KUBE_VERSION} 集群一键部署                  ║"
-echo "║  3 Master + 6 Worker | kube-vip HA | Calico CNI        ║"
+echo "║  ${MASTER_COUNT} Master + ${WORKER_COUNT} Worker | kube-vip HA | Calico CNI ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo ""
 echo "集群拓扑："
@@ -204,9 +260,9 @@ if should_run 5; then
             m_name="${MASTER_NAMES[$idx]}"
             if [ "$DRY_RUN" != "true" ]; then
                 log "  → $m_ip ($m_name): 分发 join.env + 05-join-master.sh"
-                ssh root@"$m_ip" "mkdir -p /etc/kubernetes/deploy"
-                scp -q /etc/kubernetes/deploy/join.env root@"$m_ip":/etc/kubernetes/deploy/
-                ssh root@"$m_ip" "bash -s" < "${SCRIPT_DIR}/05-join-master.sh"
+                ssh_node "$m_ip" "mkdir -p /etc/kubernetes/deploy"
+                scp_node /etc/kubernetes/deploy/join.env root@"$m_ip":/etc/kubernetes/deploy/
+                ssh_node "$m_ip" "bash /opt/k8s-deploy/offline/scripts/05-join-master.sh"
                 sleep 10
                 kubectl get nodes
                 # 校验 etcd 健康后再加下一台
@@ -228,15 +284,15 @@ if should_run 6; then
         refresh_join_env
         # 分发 join.env
         for worker in "${ALL_WORKERS[@]}"; do
-            ssh root@"$worker" "mkdir -p /etc/kubernetes/deploy"
-            scp -q /etc/kubernetes/deploy/join.env root@"$worker":/etc/kubernetes/deploy/
+            ssh_node "$worker" "mkdir -p /etc/kubernetes/deploy"
+            scp_node /etc/kubernetes/deploy/join.env root@"$worker":/etc/kubernetes/deploy/
         done
 
         # 并行 join
         pids=()
         for worker in "${ALL_WORKERS[@]}"; do
             log "  → $worker: 06-join-worker.sh (并行)"
-            ssh root@"$worker" "bash -s" < "${SCRIPT_DIR}/06-join-worker.sh" &
+            ssh_node "$worker" "bash /opt/k8s-deploy/offline/scripts/06-join-worker.sh" &
             pids+=($!)
         done
         for pid in "${pids[@]}"; do wait "$pid"; done
@@ -274,7 +330,7 @@ if should_run 8; then
             if [ "$master" == "$MASTER1_IP" ]; then
                 bash "${SCRIPT_DIR}/08-renew-certs.sh"
             else
-                ssh root@"$master" "bash -s" < "${SCRIPT_DIR}/08-renew-certs.sh"
+                ssh_node "$master" "bash /opt/k8s-deploy/offline/scripts/08-renew-certs.sh"
             fi
             sleep 15
             # 校验 etcd 健康
@@ -302,7 +358,7 @@ fi
 if [ "$DRY_RUN" != "true" ] && should_run 6; then
     log "清理 join.env 密钥..."
     for node in "${ALL_NODES[@]}"; do
-        ssh root@"$node" "rm -f /etc/kubernetes/deploy/join.env" 2>/dev/null || true
+        ssh_node "$node" "rm -f /etc/kubernetes/deploy/join.env" 2>/dev/null || true
     done
     rm -f /etc/kubernetes/deploy/join.env
     echo "[✓] join 密钥已清理"

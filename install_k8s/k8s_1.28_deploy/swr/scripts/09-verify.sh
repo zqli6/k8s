@@ -68,9 +68,14 @@ check "kube-proxy 运行 (${TOTAL_COUNT})" "[ $(kubectl get pods -n kube-system 
 # --- 3. kube-vip ---
 echo ""
 echo "--- kube-vip ---"
-check "kube-vip Pod 运行" "kubectl get pods -n kube-system -l app.kubernetes.io/name=kube-vip --no-headers 2>/dev/null | grep -q Running || kubectl get pods -n kube-system --no-headers 2>/dev/null | grep kube-vip | grep -q Running"
-check "VIP $VIP 可达" "ping -c 1 -W 2 $VIP"
-check "VIP:6443 可连接" "curl -sk https://${VIP}:6443/healthz | grep -q ok"
+if [ "${MASTER_COUNT}" -gt 1 ]; then
+    check "kube-vip Pod 运行" "kubectl get pods -n kube-system -l app.kubernetes.io/name=kube-vip --no-headers 2>/dev/null | grep -q Running || kubectl get pods -n kube-system --no-headers 2>/dev/null | grep kube-vip | grep -q Running"
+    check "VIP $VIP 可达" "ping -c 1 -W 2 $VIP"
+    check "VIP:6443 可连接" "curl -sk https://${VIP}:6443/healthz | grep -q ok"
+else
+    echo "[=] 单 Master 模式，跳过 kube-vip/VIP 检查"
+    check "Master API Server 可连接" "curl -sk https://${MASTER1_IP}:6443/healthz | grep -q ok"
+fi
 
 # --- 4. Calico ---
 echo ""

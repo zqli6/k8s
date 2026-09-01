@@ -246,10 +246,20 @@ if should_run 5; then
                 ssh_node "$m_ip" "bash /opt/k8s-deploy/scripts/05-join-master.sh"
                 sleep 10
                 kubectl get nodes
-                # 校验新 master 已加入并且 etcd 成员数与当前控制面数量一致
-                CP_READY=$(kubectl get nodes -l node-role.kubernetes.io/control-plane --no-headers 2>/dev/null | grep -c ' Ready' || true)
-                if [ "$CP_READY" -lt $((idx + 1)) ]; then
-                    err "$m_name 已加入但控制面 Ready 数量不足 (${CP_READY}/$((idx + 1)) )"
+                # CNI 尚未安装时新 master 可能仍为 NotReady；此处只验证节点已注册、etcd 成员已启动。
+                kubectl get node "$m_name" >/dev/null 2>&1 || err "$m_name 未注册到集群"
+                ETCD_CID=$(crictl ps --name '^etcd$' -q 2>/dev/null | head -1)
+                ETCD_MEMBERS=0
+                if [ -n "$ETCD_CID" ]; then
+                    ETCD_MEMBERS=$(crictl exec "$ETCD_CID" etcdctl \
+                        --endpoints=https://127.0.0.1:2379 \
+                        --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+                        --cert=/etc/kubernetes/pki/etcd/server.crt \
+                        --key=/etc/kubernetes/pki/etcd/server.key \
+                        member list 2>/dev/null | grep -c 'started' || true)
+                fi
+                if [ "$ETCD_MEMBERS" -lt $((idx + 1)) ]; then
+                    err "$m_name 已注册但 etcd 成员数不足 (${ETCD_MEMBERS}/$((idx + 1)))"
                 fi
                 kubectl get --raw='/healthz/etcd' &>/dev/null && log "  → $m_name 加入完成，etcd 健康 ✓" || err "etcd 异常，停止加入 master"
             else

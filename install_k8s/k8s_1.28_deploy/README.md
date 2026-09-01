@@ -1,24 +1,23 @@
 # Kubernetes 1.28 高可用集群 · 部署与网络技术参考
 
-> 3 Master + 6 Worker | containerd | kube-vip HA | Calico VXLAN | 证书 10 年
-> 已在 9 台 CentOS 7.9 真机完整跑通，验收 20/20。
+> 支持 1/3/5 个 Master 与任意数量 Worker。每套方案均在自己的 `config/cluster.env` 中配置节点；单 Master 不部署 kube-vip，多 Master 使用 VIP + kube-vip。
 
 
 
 下载离线包
 ```
-docker pull swr.cn-southwest-2.myhuaweicloud.com/zqli_s/k8s_1.28_deploy:26.8.9
+docker pull swr.cn-southwest-2.myhuaweicloud.com/zqli_s/k8s-1.20.11-offline:26.9.2
 ```
 复制出文件可参考[Lzq文档](https://www.yuque.com/jianglai-iayzx/wkzfha/mlda3n2mcphvzo2o#wpXxl)
 ```
 docker create --name temp-extract \
-  swr.cn-southwest-2.myhuaweicloud.com/zqli_s/k8s_1.28_deploy:26.8.9 echo
-docker cp temp-extract:/data/k8s_1.28_deploy.zip ./
+  swr.cn-southwest-2.myhuaweicloud.com/zqli_s/k8s-1.20.11-offline:26.9.2 echo
+docker cp temp-extract:/data/k8s-1.20.11-offline.tar ./host/
 docker rm temp-extract
 ```
 ```
-ctr image mount swr.cn-southwest-2.myhuaweicloud.com/zqli_s/k8s_1.28_deploy:26.8.9 /mnt/
-cp /mnt/k8s_1.28_deploy.zip ./
+ctr image mount swr.cn-southwest-2.myhuaweicloud.com/zqli_s/k8s-1.20.11-offline:26.9.2 /mnt/
+cp /mnt/ ./
 ctr image unmount /mnt/
 ```
 
@@ -58,16 +57,19 @@ ctr image unmount /mnt/
 
 每套目录结构（自包含）：`config/cluster.env` + `scripts/*.sh` + `tools/` + `manifests/`。
 
-**增减节点**只改 `config/cluster.env` 的 `MASTER_NODES` / `WORKER_NODES` 列表，脚本全程自动适配。
+### 目录自包含与节点配置
+
+每套方案只使用自身目录下的 `config/cluster.env`、`tools/` 和 `manifests/`；根目录不再保留运行时配置。单 Master 不部署 kube-vip，多 Master 使用 VIP + kube-vip。节点增减只修改对应方案的节点数组。
+
 
 ---
 
 ## 快速开始（在线版一键部署）
 
 ```bash
-# 1. 修改 config/cluster.env 中的 VIP 为实际空闲 IP
-# 2. 上传到 master1
-scp -r virtual-k8s/ root@192.168.104.104:/opt/k8s-deploy/
+# 1. 修改 online/config/cluster.env 中的 VIP、节点列表和 kube-proxy 模式
+# 2. 上传 online/ 目录到 master1
+scp -r online/ root@192.168.104.104:/opt/k8s-deploy/
 
 # 3. 一键部署
 ssh root@192.168.104.104
@@ -113,8 +115,9 @@ cd /opt/k8s-deploy/online/scripts && chmod +x *.sh
 
 - **阿里云源**：1.28 必须用 `kubernetes-new` 新路径（旧源已冻结）
 - **Pod CIDR**：`10.244.0.0/16`（Calico 默认 192.168.0.0/16 会与宿主网段冲突）
-- **kube-vip**：v1.28 挂载 `/etc/kubernetes/admin.conf`（v1.29+ 才有 super-admin.conf）
-- **CentOS7 内核**：Calico 用 iptables+VXLAN（非 eBPF，3.10 不支持）
+- **kube-vip**：仅多 Master 部署；单 Master 使用 master1 IP 作为 controlPlaneEndpoint，不生成 kube-vip static Pod。
+- **k8s-api hosts 别名**：每次系统初始化都会重建受管区域；单 Master 指向 master1 IP，多 Master 指向 VIP。
+- **kube-vip**：v1.28 多 Master 模式挂载 `/etc/kubernetes/admin.conf`（v1.29+ 才有 super-admin.conf）
 - **IPVS + MetalLB**：必须 `arp_ignore=1 / arp_announce=2`（01 脚本已配）
 
 ---

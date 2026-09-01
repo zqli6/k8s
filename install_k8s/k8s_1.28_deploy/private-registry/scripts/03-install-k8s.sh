@@ -13,6 +13,17 @@ echo "=========================================="
 echo " 安装 K8s 组件: $(hostname)"
 echo "=========================================="
 
+# --- 幂等检查前：清理旧版 kubelet systemd unit ---
+# RPM 版 kubelet 位于 /usr/bin/kubelet；旧 unit 可能继续执行已删除的
+# /usr/local/bin/kubelet，导致 kubelet status=203/EXEC。
+if [ -f /etc/systemd/system/kubelet.service ] && grep -q '/usr/local/bin/kubelet' /etc/systemd/system/kubelet.service; then
+    systemctl stop kubelet 2>/dev/null || true
+    rm -f /etc/systemd/system/kubelet.service
+    rm -rf /etc/systemd/system/kubelet.service.d
+    systemctl daemon-reload
+    echo "[✓] 已清理旧版 kubelet systemd unit"
+fi
+
 # --- 幂等检查 ---
 if command -v kubeadm &>/dev/null; then
     CURRENT_VER=$(kubeadm version -o short 2>/dev/null)
@@ -51,6 +62,14 @@ if rpm -q yum-plugin-versionlock &>/dev/null || yum install -y yum-plugin-versio
 fi
 
 # --- 4. 启用 kubelet（此时还不会真正运行，等 kubeadm init/join） ---
+# 清理旧版手工安装遗留的 systemd unit；RPM 版 kubelet 位于 /usr/bin/kubelet。
+# 否则旧 unit 可能继续执行已删除的 /usr/local/bin/kubelet，导致 status=203/EXEC。
+if [ -f /etc/systemd/system/kubelet.service ] && grep -q '/usr/local/bin/kubelet' /etc/systemd/system/kubelet.service; then
+    rm -f /etc/systemd/system/kubelet.service
+    rm -rf /etc/systemd/system/kubelet.service.d
+    echo "[✓] 已清理旧版 kubelet systemd unit"
+fi
+systemctl daemon-reload
 systemctl enable kubelet
 echo "[✓] kubelet 已设为开机启动"
 

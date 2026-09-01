@@ -7,7 +7,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-source "${SCRIPT_DIR}/../../config/cluster.env" 2>/dev/null || source /opt/k8s-deploy/config/cluster.env
+source "${SCRIPT_DIR}/../config/cluster.env" 2>/dev/null || source /opt/k8s-deploy/config/cluster.env
 
 echo "=========================================="
 echo " 加入控制平面: $(hostname)"
@@ -47,9 +47,10 @@ cp -f /etc/kubernetes/admin.conf /root/.kube/config
 chown root:root /root/.kube/config
 echo "[✓] kubectl 已配置"
 
-# --- 3. 部署 kube-vip ---
-echo ""
-echo "--- 部署 kube-vip ---"
+# --- 3. 多 Master 才部署 kube-vip ---
+if [ "${MASTER_COUNT}" -gt 1 ]; then
+    echo ""
+    echo "--- 部署 kube-vip ---"
 
 # 探测网卡
 if [ -n "$KUBEVIP_INTERFACE" ]; then
@@ -126,7 +127,10 @@ spec:
       path: /etc/kubernetes/admin.conf
     name: kubeconfig
 EOF
-echo "[✓] kube-vip manifest 已部署"
+    echo "[✓] kube-vip manifest 已部署"
+else
+    echo "[=] 单 Master 不部署 kube-vip"
+fi
 
 # --- 验证 ---
 echo ""

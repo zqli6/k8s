@@ -1,11 +1,14 @@
 # Kubernetes 1.28 离线部署版（air-gap）
 
-> 3 Master + 6 Worker | containerd | kube-vip HA | Calico | 证书 10 年
+> 支持 1/3/5 个 Master 与任意数量 Worker；本目录只提供默认示例，实际节点以 `config/cluster.env` 为准。
 > **镜像已随目录打包，节点无需联网，直接加载部署**
 
 本目录与 `online/`（在线）、`private-registry/`（私有仓库）平级，各自独立自包含。适用场景：内网无外网、无私有仓库，靠本地介质完成部署。
 
-## 与在线版的区别
+## 控制面模式
+
+`MASTER_COUNT=1` 时使用 master1 IP 作为控制面端点，不部署 kube-vip；`MASTER_COUNT>1` 时使用 VIP 并部署 kube-vip。离线镜像 tar 必须与所选模式匹配；单 Master 不要求 kube-vip 镜像。
+
 
 | 项 | 在线版 (online/) | 离线版 (本目录) |
 |----|-----------------|----------------|
@@ -66,15 +69,15 @@ cd /opt/k8s-deploy-offline/scripts && chmod +x *.sh
 
 | 步骤 | 执行节点 | 命令 | 说明 |
 |------|---------|------|------|
-| 1 | 全部 9 节点 | `./00-env-check.sh` | 环境检查（只读，不改系统） |
-| 2 | 全部 9 节点 | `./01-system-init.sh` | 系统初始化（swap/SELinux/内核模块/sysctl/arp_ignore） |
-| 3 | 全部 9 节点 | `./02-install-containerd.sh` | 装 containerd（本地 RPM，`packages/` 空则回退阿里云源） |
-| 4 | 全部 9 节点 | `./import-resources.sh` | ★离线专属：导入 `images/*.tar`（`ctr -n k8s.io images import`） |
-| 5 | 全部 9 节点 | `./03-install-k8s.sh` | 装 kubeadm/kubelet/kubectl |
-| 6 | 仅 master1 | `./04-init-master1.sh` | kube-vip + kubeadm init（镜像已本地，不联网），生成 `/etc/kubernetes/deploy/join.env` |
-| — | master1 → master2/3、node1~6 | `scp /etc/kubernetes/deploy/join.env root@<节点>:/etc/kubernetes/deploy/` | 分发 join 凭据（一键版自动做，分步需手动） |
-| 7 | 仅 master2、master3（串行） | `./05-join-master.sh` | 加入控制平面，逐台等 etcd 健康 |
-| 8 | 仅 node1~6（可并行） | `./06-join-worker.sh` | 加入 worker |
+| 1 | 当前配置中的全部节点 | `./00-env-check.sh` | 环境检查（只读，不改系统） |
+| 2 | 当前配置中的全部节点 | `./01-system-init.sh` | 系统初始化（swap/SELinux/内核模块/sysctl/hosts） |
+| 3 | 当前配置中的全部节点 | `./02-install-containerd.sh` | 装 containerd（本地 RPM，`packages/` 空则回退阿里云源） |
+| 4 | 当前配置中的全部节点 | `./import-resources.sh` | ★离线专属：导入 `images/*.tar`（`ctr -n k8s.io images import`） |
+| 5 | 当前配置中的全部节点 | `./03-install-k8s.sh` | 装 kubeadm/kubelet/kubectl |
+| 6 | 仅 master1 | `./04-init-master1.sh` | 单 Master 直连；多 Master 使用本地 kube-vip 镜像和 VIP |
+| — | master1 → 其余节点 | `scp /etc/kubernetes/deploy/join.env root@<节点>:/etc/kubernetes/deploy/` | 分发 join 凭据（一键版自动做，分步需手动） |
+| 7 | 其余 master（串行） | `./05-join-master.sh` | `MASTER_COUNT>1` 时加入控制平面 |
+| 8 | 当前配置中的 worker（可并行） | `./06-join-worker.sh` | 加入 worker |
 | 9 | 仅 master1 | `./07-install-calico.sh` | 装 Calico CNI（用本地 `manifests/calico.yaml`，VXLAN） |
 | 10 | 每个 master（串行） | `./08-renew-certs.sh` | 证书续期 10 年（用本地 `tools/update-kubeadm-cert.sh`） |
 | 11 | 仅 master1 | `./09-verify.sh` | 20 项验收，全绿即成功 |

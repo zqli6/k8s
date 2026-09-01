@@ -1,0 +1,1 @@
+k8s部署images见根目录README中镜像：swr.cn-southwest-2.myhuaweicloud.com/zqli_s/k8s-1.20.11-offline

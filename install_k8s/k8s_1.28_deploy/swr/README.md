@@ -1,27 +1,33 @@
 # Kubernetes 1.28 部署 · 华为云 SWR 私有仓库版
 
-> 支持 1/3/5 个 Master 与任意数量 Worker。默认示例可按需修改；本次实测拓扑为 1 Master + 3 Worker。
+> 支持 1/3/5 个 Master 与任意数量 Worker。默认示例可按需修改；本次实测拓扑为 3 Master + 1 Worker。
 > 所有镜像从华为云 SWR（private 组织）拉取。与 online/offline/private-registry 平级、独立自包含。
 
-## 本次实验验证结果（1 Master + 3 Worker）
+## 控制面模式
+
+`MASTER_COUNT=1` 时使用 master1 IP 作为控制面端点，不部署 kube-vip；`MASTER_COUNT>1` 时使用 VIP 并部署 kube-vip。`KUBE_PROXY_MODE` 独立控制 Service 转发模式。
+
+## 本次实验验证结果（3 Master + 1 Worker）
 
 已在以下节点按本文档完成真实部署验证：
 
 | 项目 | 结果 |
 |------|------|
-| 节点 | `192.168.104.231` master，`232/233/234` worker |
+| 节点 | `231/232/233` master，`234` worker |
 | OS / 架构 | CentOS 7.9 / x86_64 |
 | Kubernetes | v1.28.15 |
 | containerd | 1.6.33，四台均为运行时 |
 | SWR private 认证 | containerd CRI 拉取成功 |
-| kube-vip | v0.8.0，SWR 镜像拉取成功，VIP 可达 |
+| kube-vip | v0.8.0，3 个 static Pod 正常，VIP 可达 |
 | Calico | v3.26.4，纯 VXLAN，4/4 Ready |
+| 控制面组件 | API Server、Controller Manager、Scheduler 各 3 个 Running |
+| etcd | 3 个 started 成员，健康 |
+| kube-proxy | 4 个 Running，IPVS 模式 |
 | 节点状态 | 4/4 Ready |
-| API Server / etcd | 健康 |
-| 证书 | 叶子证书已续期到 2036 年 |
+| 证书 | 3 个 master 叶子证书已续期到 2036 年 |
 | 最终验收 | 19 项通过，0 项失败 |
 
-本次实验还修正了以下真实问题：containerd 默认 `config_path` 重复导致启动失败、SWR 用户名重复拼接、CentOS RPM kubelet 被旧 `/usr/local/bin/kubelet` systemd 单元覆盖、动态节点一键分发未调用、验收脚本误将未推送的 `busybox:latest` 当作 DNS 前置条件。完整多 master HA 尚未在本次 1 master 实验中验证，需使用 3 个或其他奇数 master 重新执行控制平面 join。
+另已验证 `1 Master + 3 Worker`：不部署 kube-vip、controlPlaneEndpoint 直连 master1，最终验收 17/17 通过。三 Master 验证尚未执行主动关机或断网故障注入，因此这里确认的是部署、etcd 三成员、VIP 选主和控制面组件冗余，不把故障切换演练称为已完成。
 
 ## kube-proxy Service 转发模式
 
@@ -55,7 +61,13 @@ WORKER_NODES=(
 
 重新使用已有节点前，先阅读并按需执行 [`CLEANUP-README.md`](CLEANUP-README.md)。其中包含 kubeadm、kubelet、etcd、Calico、Flannel、CNI 网卡、iptables/IPVS 及旧配置的清理步骤。清理命令具有破坏性，请先确认节点无业务数据。
 
-## 节点信息可编辑，且保留多节点机制
+本目录支持两种控制面模式：
+
+- **单 Master**：`MASTER_COUNT=1` 时自动使用 `MASTER1_IP:6443`，不生成 kube-vip static Pod，`/etc/hosts` 中 `k8s-api` 指向 master1。
+- **多 Master HA**：`MASTER_COUNT>1` 时必须使用奇数个 Master，自动使用 `VIP:6443`，每个 Master 生成 kube-vip static Pod，`/etc/hosts` 中 `k8s-api` 指向 VIP。
+
+`KUBE_PROXY_MODE="ipvs"` 是独立配置，控制 Kubernetes Service 转发模式，不决定是否部署 kube-vip。
+
 
 本目录不是固定的 3 Master + 6 Worker。编辑 `config/cluster.env` 中的 `MASTER_NODES` 和 `WORKER_NODES` 即可用于实验拓扑；脚本会自动重新派生 IP、主机名、节点总数和验收数量。例如单 master 测试：
 

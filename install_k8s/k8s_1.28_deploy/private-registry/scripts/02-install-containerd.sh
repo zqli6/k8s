@@ -109,7 +109,11 @@ TOML
     fi
 
     # 确保 config.toml 启用 certs.d（config_path）
-    if ! grep -q 'config_path = "/etc/containerd/certs.d"' /etc/containerd/config.toml; then
+    # containerd config default 会生成 config_path = ""，直接替换避免重复
+    if grep -q 'config_path = ""' /etc/containerd/config.toml; then
+        sed -i 's|config_path = ""|config_path = "/etc/containerd/certs.d"|' /etc/containerd/config.toml
+        echo "[✓] containerd 已启用 certs.d 目录（替换默认空值）"
+    elif ! grep -q 'config_path = "/etc/containerd/certs.d"' /etc/containerd/config.toml; then
         sed -i 's|\(\[plugins."io.containerd.grpc.v1.cri".registry\]\)|\1\n      config_path = "/etc/containerd/certs.d"|' /etc/containerd/config.toml
         echo "[✓] containerd 已启用 certs.d 目录"
     fi

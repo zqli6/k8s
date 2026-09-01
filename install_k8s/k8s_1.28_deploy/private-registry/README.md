@@ -1,11 +1,14 @@
 # Kubernetes 1.28 私有仓库部署版
 
-> 3 Master + 6 Worker | containerd | kube-vip HA | Calico | 证书 10 年
+> 支持 1/3/5 个 Master 与任意数量 Worker；本目录只提供默认示例，实际节点以 `config/cluster.env` 为准。
 > **所有镜像从你的私有仓库（Harbor / registry）拉取**
 
 本目录是**完全自包含**的一套，与 `online/`、`offline/` 平级、互不干扰。适用场景：内网已有 Harbor 或私有 registry，希望所有节点统一从私有仓库拉镜像。
 
-## 与在线版的区别
+## 控制面模式
+
+`MASTER_COUNT=1` 时使用 master1 IP 作为控制面端点，不部署 kube-vip；`MASTER_COUNT>1` 时使用 VIP 并部署 kube-vip。`KUBE_PROXY_MODE` 独立控制 Service 转发模式，private registry 只负责镜像来源和仓库信任。
+
 
 | 项 | 在线版 (online/) | 私有仓库版 (本目录) |
 |----|-----------------|--------------------|
@@ -103,19 +106,19 @@ chmod +x *.sh
 
 ## 分步部署命令速查
 
-前置：完成上面第 1、2 步（配好 `config/cluster.env` 的 `PRIVATE_REGISTRY` + 证书信任变量、镜像已 `push-to-registry.sh` 推入仓库），并把 `private-registry/` 目录传到 master1、各节点 SSH 免密已通。脚本自包含，`source ../config/cluster.env`。在每个节点 `scripts/` 目录里按下表执行。
+前置：完成上面第 1、2 步（配好 `config/cluster.env` 的 `PRIVATE_REGISTRY` + 证书信任变量、镜像已推入仓库），并把 `private-registry/` 目录传到 master1、各节点 SSH 免密已通。脚本自包含，`source ../config/cluster.env`。在每个节点 `scripts/` 目录里按下表执行。
 
 | 步骤 | 执行节点 | 命令 | 说明 |
 |------|---------|------|------|
 | 0 | 有网跳板机 | `./push-to-registry.sh --pull` | 部署前先推镜像（见第 2 步，仅需一次） |
-| 1 | 全部 9 节点 | `./00-env-check.sh` | 环境检查（只读） |
-| 2 | 全部 9 节点 | `./01-system-init.sh` | 系统初始化（swap/SELinux/内核/sysctl/arp_ignore） |
-| 3 | 全部 9 节点 | `./02-install-containerd.sh` | 装 containerd + ★自动配私有仓库信任（读 `REGISTRY_CA_FILE`/`REGISTRY_TLS_INSECURE`/`REGISTRY_PROTOCOL` 写 `certs.d/<仓库>/hosts.toml`） |
-| 4 | 全部 9 节点 | `./03-install-k8s.sh` | 装 kubeadm/kubelet/kubectl |
-| 5 | 仅 master1 | `./04-init-master1.sh` | kube-vip + kubeadm init（镜像从私有仓库拉），生成 `/etc/kubernetes/deploy/join.env` |
+| 1 | 当前配置中的全部节点 | `./00-env-check.sh` | 环境检查（只读） |
+| 2 | 当前配置中的全部节点 | `./01-system-init.sh` | 系统初始化（swap/SELinux/内核/sysctl/hosts） |
+| 3 | 当前配置中的全部节点 | `./02-install-containerd.sh` | 装 containerd + 配私有仓库信任 |
+| 4 | 当前配置中的全部节点 | `./03-install-k8s.sh` | 装 kubeadm/kubelet/kubectl |
+| 5 | 仅 master1 | `./04-init-master1.sh` | 单 Master 直连；多 Master 使用 kube-vip + VIP |
 | — | master1 → 其余节点 | `scp /etc/kubernetes/deploy/join.env root@<节点>:/etc/kubernetes/deploy/` | 分发 join 凭据（一键版自动，分步需手动） |
-| 6 | 仅 master2、master3（串行） | `./05-join-master.sh` | 加入控制平面，逐台等 etcd 健康 |
-| 7 | 仅 node1~6（可并行） | `./06-join-worker.sh` | 加入 worker |
+| 6 | 其余 master（串行） | `./05-join-master.sh` | `MASTER_COUNT>1` 时加入控制平面 |
+| 7 | 当前配置中的 worker（可并行） | `./06-join-worker.sh` | 加入 worker |
 | 8 | 仅 master1 | `./07-install-calico.sh` | 装 Calico CNI（用本地 `manifests/calico.yaml`，VXLAN） |
 | 9 | 每个 master（串行） | `./08-renew-certs.sh` | 证书续期 10 年 |
 | 10 | 仅 master1 | `./09-verify.sh` | 20 项验收，全绿即成功 |

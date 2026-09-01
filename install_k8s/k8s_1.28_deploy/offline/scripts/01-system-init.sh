@@ -31,18 +31,30 @@ else
 fi
 
 # --- 2. 配置 /etc/hosts ---
-if ! grep -q "$VIP" /etc/hosts; then
-    {
-        echo ""
-        echo "# Kubernetes cluster nodes"
-        for i in "${!ALL_IPS[@]}"; do
-            echo "${ALL_IPS[$i]} ${ALL_NAMES[$i]}"
-        done
-        echo "$VIP k8s-api"
-    } >> /etc/hosts
-    echo "[✓] /etc/hosts 已更新（${TOTAL_COUNT} 个节点）"
+# 每次根据当前 MASTER_NODES/WORKER_NODES 重建受管区域，避免拓扑变更后
+# 旧节点或旧 k8s-api 记录继续生效。其他非本方案记录保持不变。
+awk '
+    /# K8S-DEPLOY-MANAGED-BEGIN/ {skip=1; next}
+    /# K8S-DEPLOY-MANAGED-END/ {skip=0; next}
+    !skip {print}
+' /etc/hosts > /etc/hosts.k8s-deploy.tmp
+{
+    echo "# K8S-DEPLOY-MANAGED-BEGIN"
+    for i in "${!ALL_IPS[@]}"; do
+        echo "${ALL_IPS[$i]} ${ALL_NAMES[$i]}"
+    done
+    if [ "${MASTER_COUNT}" -gt 1 ]; then
+        echo "${VIP} k8s-api"
+    else
+        echo "${MASTER1_IP} k8s-api"
+    fi
+    echo "# K8S-DEPLOY-MANAGED-END"
+} >> /etc/hosts.k8s-deploy.tmp
+mv /etc/hosts.k8s-deploy.tmp /etc/hosts
+if [ "${MASTER_COUNT}" -gt 1 ]; then
+    echo "[✓] /etc/hosts 已更新：多 Master 使用 VIP ${VIP} k8s-api"
 else
-    echo "[=] /etc/hosts 已包含集群信息，跳过"
+    echo "[✓] /etc/hosts 已更新：单 Master 使用 ${MASTER1_IP} k8s-api，不部署 kube-vip"
 fi
 
 # --- 3. 关闭 Swap ---
@@ -106,7 +118,29 @@ sysctl --system > /dev/null 2>&1
 echo "[✓] 内核参数已生效"
 
 # --- 8. 安装基础工具 ---
-yum install -y conntrack-tools socat ipset ipvsadm chrony yum-utils \
+# 完全离线时优先使用本目录 packages/ 的本地 yum 源；没有离线包时
+# 才回退到系统已配置的在线源，并明确提示该方案不是完全离线。
+OFFLINE_BASE="$(cd "${SCRIPT_DIR}/.." && pwd)"
+[ -d "${OFFLINE_BASE}/packages" ] || OFFLINE_BASE="/opt/k8s-deploy"
+RPMS_DIR="${OFFLINE_BASE}/packages"
+YUM_LOCAL_ARGS=()
+if [ -f "${RPMS_DIR}/repodata/repomd.xml" ] && compgen -G "${RPMS_DIR}/*.rpm" > /dev/null; then
+    cat > /etc/yum.repos.d/k8s-local.repo <<EOF
+[k8s-local]
+name=Kubernetes Local Offline Repo
+baseurl=file://${RPMS_DIR}
+enabled=1
+gpgcheck=0
+EOF
+    yum clean metadata >/dev/null 2>&1 || true
+    yum makecache --disablerepo='*' --enablerepo=k8s-local >/dev/null 2>&1
+    YUM_LOCAL_ARGS=(--disablerepo='*' --enablerepo=k8s-local)
+    echo "[✓] 基础工具使用本地 RPM 源: file://${RPMS_DIR}"
+else
+    echo "[!] 未找到完整本地 RPM 源，基础工具将使用系统 yum 源（需要外网）"
+fi
+
+yum "${YUM_LOCAL_ARGS[@]}" install -y conntrack-tools socat ipset ipvsadm chrony yum-utils \
     wget curl net-tools bash-completion > /dev/null 2>&1
 echo "[✓] 基础工具已安装"
 

@@ -31,18 +31,30 @@ else
 fi
 
 # --- 2. 配置 /etc/hosts ---
-if ! grep -q "$VIP" /etc/hosts; then
-    {
-        echo ""
-        echo "# Kubernetes cluster nodes"
-        for i in "${!ALL_IPS[@]}"; do
-            echo "${ALL_IPS[$i]} ${ALL_NAMES[$i]}"
-        done
-        echo "$VIP k8s-api"
-    } >> /etc/hosts
-    echo "[✓] /etc/hosts 已更新（${TOTAL_COUNT} 个节点）"
+# 每次根据当前 MASTER_NODES/WORKER_NODES 重建受管区域，避免拓扑变更后
+# 旧节点或旧 k8s-api 记录继续生效。其他非本方案记录保持不变。
+awk '
+    /# K8S-DEPLOY-MANAGED-BEGIN/ {skip=1; next}
+    /# K8S-DEPLOY-MANAGED-END/ {skip=0; next}
+    !skip {print}
+' /etc/hosts > /etc/hosts.k8s-deploy.tmp
+{
+    echo "# K8S-DEPLOY-MANAGED-BEGIN"
+    for i in "${!ALL_IPS[@]}"; do
+        echo "${ALL_IPS[$i]} ${ALL_NAMES[$i]}"
+    done
+    if [ "${MASTER_COUNT}" -gt 1 ]; then
+        echo "${VIP} k8s-api"
+    else
+        echo "${MASTER1_IP} k8s-api"
+    fi
+    echo "# K8S-DEPLOY-MANAGED-END"
+} >> /etc/hosts.k8s-deploy.tmp
+mv /etc/hosts.k8s-deploy.tmp /etc/hosts
+if [ "${MASTER_COUNT}" -gt 1 ]; then
+    echo "[✓] /etc/hosts 已更新：多 Master 使用 VIP ${VIP} k8s-api"
 else
-    echo "[=] /etc/hosts 已包含集群信息，跳过"
+    echo "[✓] /etc/hosts 已更新：单 Master 使用 ${MASTER1_IP} k8s-api，不部署 kube-vip"
 fi
 
 # --- 3. 关闭 Swap ---

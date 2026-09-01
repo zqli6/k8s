@@ -12,7 +12,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-source "${SCRIPT_DIR}/../../config/cluster.env"
+source "${SCRIPT_DIR}/../config/cluster.env"
 
 # --- 参数解析 ---
 FROM_PHASE=0
@@ -112,8 +112,8 @@ distribute_files() {
 
     for node in "${ALL_NODES[@]}"; do
         ssh -o StrictHostKeyChecking=no root@"$node" "mkdir -p /opt/k8s-deploy/config /opt/k8s-deploy/online/scripts /opt/k8s-deploy/tools" 2>/dev/null
-        scp -q "${SCRIPT_DIR}/../../config/cluster.env" root@"$node":/opt/k8s-deploy/config/
-        scp -q "${SCRIPT_DIR}/../../tools/update-kubeadm-cert.sh" root@"$node":/opt/k8s-deploy/tools/ 2>/dev/null
+        scp -q "${SCRIPT_DIR}/../config/cluster.env" root@"$node":/opt/k8s-deploy/config/
+        scp -q "${SCRIPT_DIR}/../tools/update-kubeadm-cert.sh" root@"$node":/opt/k8s-deploy/tools/ 2>/dev/null
         for script in 00-env-check.sh 01-system-init.sh 02-install-containerd.sh 03-install-k8s.sh; do
             scp -q "${SCRIPT_DIR}/${script}" root@"$node":/opt/k8s-deploy/online/scripts/
         done
@@ -125,7 +125,7 @@ distribute_files() {
 echo ""
 echo "╔══════════════════════════════════════════════════════════╗"
 echo "║  Kubernetes v${KUBE_VERSION} 集群一键部署                  ║"
-echo "║  3 Master + 6 Worker | kube-vip HA | Calico CNI        ║"
+echo "║  ${MASTER_COUNT} Master + ${WORKER_COUNT} Worker | kube-vip HA | Calico CNI ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo ""
 echo "集群拓扑："

@@ -30,45 +30,49 @@ if ! command -v kubeadm &>/dev/null; then
     exit 1
 fi
 
-# --- 1. 探测网卡名 ---
-if [ -n "$KUBEVIP_INTERFACE" ]; then
-    NIC="$KUBEVIP_INTERFACE"
-    echo "[=] 使用指定网卡: $NIC"
-else
-    NIC=$(ip route show default | awk '/default/{print $5; exit}')
-    echo "[✓] 自动探测网卡: $NIC"
-fi
-
-# 校验网卡持有本机 IP
-LOCAL_IP=$(hostname -I | awk '{print $1}')
-if ! ip addr show "$NIC" | grep -q "$LOCAL_IP"; then
-    echo "[✗] 网卡 $NIC 未持有本机 IP $LOCAL_IP"
-    exit 1
-fi
-echo "[✓] 网卡 $NIC 持有 IP $LOCAL_IP"
-
-# --- 2. 拉取 kube-vip 镜像并生成 static pod manifest ---
-echo ""
-echo "--- 配置 kube-vip ---"
-# KUBEVIP_IMAGE 由 cluster.env 定义
-KUBEVIP_IMAGE="${KUBEVIP_IMAGE:-ghcr.io/kube-vip/kube-vip:${KUBEVIP_VERSION}}"
-
-# 拉取镜像（ctr 不自动拉取，必须先 pull）
-echo "拉取 kube-vip 镜像: $KUBEVIP_IMAGE"
-ctr -n k8s.io images pull "$KUBEVIP_IMAGE" || {
-    echo "[!] 从 ghcr.io 拉取失败，尝试离线导入..."
-    if [ -f "${OFFLINE_DIR:-/opt/k8s-offline}/images/kube-vip.tar" ]; then
-        ctr -n k8s.io images import "${OFFLINE_DIR:-/opt/k8s-offline}/images/kube-vip.tar"
+# --- 1. 探测网卡名（仅多 Master 的 kube-vip 模式需要）---
+if [ "${MASTER_COUNT}" -gt 1 ]; then
+    if [ -n "$KUBEVIP_INTERFACE" ]; then
+        NIC="$KUBEVIP_INTERFACE"
+        echo "[=] 使用指定网卡: $NIC"
     else
-        echo "[✗] 无法获取 kube-vip 镜像"
+        NIC=$(ip route show default | awk '/default/{print $5; exit}')
+        echo "[✓] 自动探测网卡: $NIC"
+    fi
+
+    # 校验网卡持有本机 IP
+    LOCAL_IP=$(hostname -I | awk '{print $1}')
+    if ! ip addr show "$NIC" | grep -q "$LOCAL_IP"; then
+        echo "[✗] 网卡 $NIC 未持有本机 IP $LOCAL_IP"
         exit 1
     fi
-}
+    echo "[✓] 网卡 $NIC 持有 IP $LOCAL_IP"
+else
+    echo "[=] 单 Master 模式，不部署 kube-vip，控制面直接使用 ${MASTER1_IP}:${API_SERVER_PORT}"
+fi
 
-# 生成 manifest（必须在 kubeadm init 之前放入）
-mkdir -p /etc/kubernetes/manifests
+# --- 2. 多 Master 才拉取 kube-vip 镜像并生成 static pod manifest ---
+if [ "${MASTER_COUNT}" -gt 1 ]; then
+    echo ""
+    echo "--- 配置 kube-vip ---"
+    # KUBEVIP_IMAGE 由 cluster.env 定义
+    KUBEVIP_IMAGE="${KUBEVIP_IMAGE:-ghcr.io/kube-vip/kube-vip:${KUBEVIP_VERSION}}"
 
-cat > /etc/kubernetes/manifests/kube-vip.yaml <<EOF
+    # 拉取镜像（ctr 不自动拉取，必须先 pull）
+    echo "拉取 kube-vip 镜像: $KUBEVIP_IMAGE"
+    ctr -n k8s.io images pull "$KUBEVIP_IMAGE" || {
+        echo "[!] 从 ghcr.io 拉取失败，尝试离线导入..."
+        if [ -f "${OFFLINE_DIR:-/opt/k8s-offline}/images/kube-vip.tar" ]; then
+            ctr -n k8s.io images import "${OFFLINE_DIR:-/opt/k8s-offline}/images/kube-vip.tar"
+        else
+            echo "[✗] 无法获取 kube-vip 镜像"
+            exit 1
+        fi
+    }
+
+    # 生成 manifest（必须在 kubeadm init 之前放入）
+    mkdir -p /etc/kubernetes/manifests
+    cat > /etc/kubernetes/manifests/kube-vip.yaml <<EOF
 apiVersion: v1
 kind: Pod
 metadata:
@@ -123,15 +127,20 @@ spec:
       path: /etc/kubernetes/admin.conf
     name: kubeconfig
 EOF
-echo "[✓] kube-vip manifest 已生成: /etc/kubernetes/manifests/kube-vip.yaml"
-echo "    VIP: ${VIP}, 网卡: ${NIC}, 模式: ARP + LeaderElection"
+    echo "[✓] kube-vip manifest 已生成: /etc/kubernetes/manifests/kube-vip.yaml"
+    echo "    VIP: ${VIP}, 网卡: ${NIC}, 模式: ARP + LeaderElection"
+fi
 
 # --- 3. 生成 kubeadm 配置 ---
 echo ""
 echo "--- 生成 kubeadm 配置 ---"
-
-# 动态生成 certSANs（覆盖 VIP + 所有 master 的 IP 和主机名）
-CERT_SANS="    - \"${VIP}\""
+mkdir -p /etc/kubernetes/manifests
+# 动态生成 certSANs（多 Master 包含 VIP；单 Master 仅使用 master1 地址）
+if [ "${MASTER_COUNT}" -gt 1 ]; then
+    CERT_SANS="    - \"${VIP}\""
+else
+    CERT_SANS=""
+fi
 for ip in "${MASTER_IPS[@]}"; do
     CERT_SANS="${CERT_SANS}
     - \"${ip}\""
@@ -143,6 +152,12 @@ done
 CERT_SANS="${CERT_SANS}
     - \"localhost\"
     - \"127.0.0.1\""
+
+if [ "${MASTER_COUNT}" -gt 1 ]; then
+    CONTROL_PLANE_ENDPOINT="${VIP}:${API_SERVER_PORT}"
+else
+    CONTROL_PLANE_ENDPOINT="${MASTER1_IP}:${API_SERVER_PORT}"
+fi
 
 cat > /etc/kubernetes/kubeadm-config.yaml <<EOF
 apiVersion: kubeadm.k8s.io/v1beta3
@@ -156,7 +171,7 @@ nodeRegistration:
 apiVersion: kubeadm.k8s.io/v1beta3
 kind: ClusterConfiguration
 kubernetesVersion: "v${KUBE_VERSION}"
-controlPlaneEndpoint: "${VIP}:${API_SERVER_PORT}"
+controlPlaneEndpoint: "${CONTROL_PLANE_ENDPOINT}"
 imageRepository: "${IMAGE_REPOSITORY}"
 networking:
   podSubnet: "${POD_CIDR}"
@@ -175,7 +190,7 @@ cgroupDriver: systemd
 ---
 apiVersion: kubeproxy.config.k8s.io/v1alpha1
 kind: KubeProxyConfiguration
-mode: ipvs
+mode: ${KUBE_PROXY_MODE}
 EOF
 echo "[✓] kubeadm 配置已生成: /etc/kubernetes/kubeadm-config.yaml"
 

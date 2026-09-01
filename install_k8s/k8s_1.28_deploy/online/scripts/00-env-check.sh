@@ -7,7 +7,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-source "${SCRIPT_DIR}/../../config/cluster.env" 2>/dev/null || source /opt/k8s-deploy/config/cluster.env
+source "${SCRIPT_DIR}/../config/cluster.env" 2>/dev/null || source /opt/k8s-deploy/config/cluster.env
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -43,9 +43,13 @@ else
     log_err "不支持的架构: $ARCH（需要 x86_64）"
 fi
 
-# --- 2. 硬件资源 ---
-echo ""
-echo "--- 硬件资源 ---"
+if [ "${KUBE_PROXY_MODE}" != "ipvs" ] && [ "${KUBE_PROXY_MODE}" != "iptables" ]; then
+    log_err "不支持的 kube-proxy 模式: ${KUBE_PROXY_MODE}（Kubernetes 1.28 本方案仅支持 ipvs 或 iptables）"
+else
+    log_ok "kube-proxy 模式: ${KUBE_PROXY_MODE}"
+fi
+
+CPU_CORES=$(nproc)
 CPU_CORES=$(nproc)
 if [ "$CPU_CORES" -ge 2 ]; then
     log_ok "CPU 核数: ${CPU_CORES} (>=2)"

@@ -13,6 +13,17 @@ echo "=========================================="
 echo " 安装 K8s 组件: $(hostname)"
 echo "=========================================="
 
+# --- 幂等检查前：清理旧版 kubelet systemd unit ---
+# RPM 版 kubelet 位于 /usr/bin/kubelet；旧 unit 可能继续执行已删除的
+# /usr/local/bin/kubelet，导致 kubelet status=203/EXEC。
+if [ -f /etc/systemd/system/kubelet.service ] && grep -q '/usr/local/bin/kubelet' /etc/systemd/system/kubelet.service; then
+    systemctl stop kubelet 2>/dev/null || true
+    rm -f /etc/systemd/system/kubelet.service
+    rm -rf /etc/systemd/system/kubelet.service.d
+    systemctl daemon-reload
+    echo "[✓] 已清理旧版 kubelet systemd unit"
+fi
+
 # --- 幂等检查 ---
 if command -v kubeadm &>/dev/null; then
     CURRENT_VER=$(kubeadm version -o short 2>/dev/null)
@@ -27,9 +38,29 @@ if command -v kubeadm &>/dev/null; then
     fi
 fi
 
-# --- 1. 配置阿里云 kubernetes-new 源 ---
-# 注意：1.28 必须用 kubernetes-new 新路径，旧的 mirrors.aliyun.com/kubernetes/ 已冻结
-cat > /etc/yum.repos.d/kubernetes.repo <<EOF
+# --- 1. 配置软件包源 ---
+OFFLINE_BASE="$(cd "${SCRIPT_DIR}/.." && pwd)"
+if [ -n "${OFFLINE_SOURCE_DIR:-}" ] && [ -d "${OFFLINE_SOURCE_DIR}/packages" ]; then
+    OFFLINE_BASE="${OFFLINE_SOURCE_DIR}"
+fi
+RPMS_DIR="${OFFLINE_BASE}/packages"
+YUM_LOCAL_ARGS=()
+
+if [ -f "${RPMS_DIR}/repodata/repomd.xml" ] && compgen -G "${RPMS_DIR}/*.rpm" > /dev/null; then
+    cat > /etc/yum.repos.d/k8s-local.repo <<EOF
+[k8s-local]
+name=Kubernetes Local Offline Repo
+baseurl=file://${RPMS_DIR}
+enabled=1
+gpgcheck=0
+EOF
+    yum clean metadata >/dev/null 2>&1 || true
+    yum makecache --disablerepo='*' --enablerepo=k8s-local >/dev/null 2>&1
+    YUM_LOCAL_ARGS=(--disablerepo='*' --enablerepo=k8s-local)
+    echo "[✓] 使用本地 RPM 源: file://${RPMS_DIR}"
+else
+    echo "[!] 未找到完整本地 RPM 源，Kubernetes 将使用配置的在线 yum 源"
+    cat > /etc/yum.repos.d/kubernetes.repo <<EOF
 [kubernetes]
 name=Kubernetes v${KUBE_VERSION_SHORT}
 baseurl=${KUBE_REPO_URL}
@@ -37,11 +68,12 @@ enabled=1
 gpgcheck=1
 gpgkey=${KUBE_REPO_GPGKEY}
 EOF
-echo "[✓] kubernetes yum 源已配置（阿里云 kubernetes-new）"
-echo "    baseurl: ${KUBE_REPO_URL}"
+    echo "[✓] kubernetes yum 源已配置（阿里云 kubernetes-new）"
+    echo "    baseurl: ${KUBE_REPO_URL}"
+fi
 
 # --- 2. 安装 kubelet kubeadm kubectl ---
-yum install -y kubelet-${KUBE_VERSION} kubeadm-${KUBE_VERSION} kubectl-${KUBE_VERSION}
+yum "${YUM_LOCAL_ARGS[@]}" install -y kubelet-${KUBE_VERSION} kubeadm-${KUBE_VERSION} kubectl-${KUBE_VERSION}
 echo "[✓] kubelet/kubeadm/kubectl ${KUBE_VERSION} 已安装"
 
 # --- 3. 锁定版本防止意外升级 ---
@@ -51,6 +83,14 @@ if rpm -q yum-plugin-versionlock &>/dev/null || yum install -y yum-plugin-versio
 fi
 
 # --- 4. 启用 kubelet（此时还不会真正运行，等 kubeadm init/join） ---
+# 清理旧版手工安装遗留的 systemd unit；RPM 版 kubelet 位于 /usr/bin/kubelet。
+# 否则旧 unit 可能继续执行已删除的 /usr/local/bin/kubelet，导致 status=203/EXEC。
+if [ -f /etc/systemd/system/kubelet.service ] && grep -q '/usr/local/bin/kubelet' /etc/systemd/system/kubelet.service; then
+    rm -f /etc/systemd/system/kubelet.service
+    rm -rf /etc/systemd/system/kubelet.service.d
+    echo "[✓] 已清理旧版 kubelet systemd unit"
+fi
+systemctl daemon-reload
 systemctl enable kubelet
 echo "[✓] kubelet 已设为开机启动"
 

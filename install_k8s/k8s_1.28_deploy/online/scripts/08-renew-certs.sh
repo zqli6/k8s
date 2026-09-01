@@ -7,7 +7,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-source "${SCRIPT_DIR}/../../config/cluster.env" 2>/dev/null || source /opt/k8s-deploy/config/cluster.env
+source "${SCRIPT_DIR}/../config/cluster.env" 2>/dev/null || source /opt/k8s-deploy/config/cluster.env
 
 echo "=========================================="
 echo " 证书续期 10 年: $(hostname)"
@@ -67,7 +67,7 @@ echo "[✓] 已备份到: $BACKUP_DIR"
 
 # --- 2. 获取重签脚本（优先仓库内置 → 离线介质 → 联网兜底）---
 CERT_SCRIPT="/tmp/update-kubeadm-cert.sh"
-BUNDLED="${SCRIPT_DIR}/../../tools/update-kubeadm-cert.sh"
+BUNDLED="${SCRIPT_DIR}/../tools/update-kubeadm-cert.sh"
 if [ -f "$BUNDLED" ]; then
     cp "$BUNDLED" "$CERT_SCRIPT"
     echo "[=] 使用仓库内置证书脚本: tools/update-kubeadm-cert.sh"

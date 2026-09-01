@@ -77,6 +77,7 @@ else
     log_ok "kube-proxy 模式: ${KUBE_PROXY_MODE}"
 fi
 
+CPU_CORES=$(nproc)
 if [ "$CPU_CORES" -ge 2 ]; then
     log_ok "CPU 核数: ${CPU_CORES} (>=2)"
 else

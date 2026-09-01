@@ -16,7 +16,9 @@ echo "=========================================="
 
 # 离线资源根目录 = offline 目录本身（scripts 的上一级），开箱即用
 OFFLINE_BASE="$(cd "${SCRIPT_DIR}/.." && pwd)"
-[ ! -d "${OFFLINE_BASE}/images" ] && OFFLINE_BASE="/opt/k8s-deploy"
+if [ -n "${OFFLINE_SOURCE_DIR:-}" ] && [ -d "${OFFLINE_SOURCE_DIR}/images" ]; then
+    OFFLINE_BASE="${OFFLINE_SOURCE_DIR}"
+fi
 echo "离线资源目录: $OFFLINE_BASE"
 echo "  images/   镜像 tar（k8s-core / calico / kube-vip）"
 echo "  packages/ 离线 RPM 包（可选，无则用在线 yum 源）"
@@ -26,9 +28,10 @@ echo ""
 echo "--- 配置本地 yum 源 ---"
 RPMS_DIR="${OFFLINE_BASE}/packages"
 
-if [ ! -d "$RPMS_DIR" ] || [ $(ls "$RPMS_DIR"/*.rpm 2>/dev/null | wc -l) -eq 0 ]; then
-    echo "[✗] 未找到 RPM 包: $RPMS_DIR"
-    echo "    RPM 走在线阿里云源（需外网），镜像仍从本地导入"
+if [ ! -f "${RPMS_DIR}/repodata/repomd.xml" ] || ! compgen -G "${RPMS_DIR}/*.rpm" > /dev/null; then
+    echo "[✗] 未找到完整 RPM 仓库: $RPMS_DIR"
+    echo "    完全离线部署需要 RPM 文件和 repodata/repomd.xml。"
+    exit 1
 fi
 
 # 备份并禁用原有在线源
@@ -136,8 +139,10 @@ fi
 # --- 4. 安装基础依赖 ---
 echo ""
 echo "--- 安装基础依赖（从本地 repo）---"
-yum install -y conntrack-tools socat ipset ipvsadm chrony bash-completion \
-    wget curl net-tools > /dev/null 2>&1
+# containerd/kubeadm 先使用的本地仓库已在本脚本开头配置。
+yum --disablerepo='*' --enablerepo=k8s-local install -y \
+    conntrack-tools socat ipset ipvsadm chrony bash-completion \
+    wget curl net-tools yum-utils > /dev/null 2>&1
 echo "[✓] 基础依赖已安装"
 
 # --- 5. 恢复在线源（可选） ---

@@ -21,18 +21,41 @@ if command -v containerd &>/dev/null; then
     # 不退出，继续确保配置正确
 fi
 
-# --- 1. 配置阿里云 docker-ce 源 ---
-if [ ! -f /etc/yum.repos.d/docker-ce.repo ]; then
-    yum-config-manager --add-repo "$DOCKER_CE_REPO"
-    # 替换为阿里云地址（repo 文件中 download.docker.com 替换为 mirrors.aliyun.com/docker-ce）
-    sed -i 's+download.docker.com+mirrors.aliyun.com/docker-ce+' /etc/yum.repos.d/docker-ce.repo
-    echo "[✓] docker-ce yum 源已配置（阿里云）"
+# --- 1. 配置软件包源 ---
+# 优先使用本目录 packages/ 中的离线 RPM；没有完整离线包时才回退在线源。
+OFFLINE_BASE="$(cd "${SCRIPT_DIR}/.." && pwd)"
+if [ -n "${OFFLINE_SOURCE_DIR:-}" ] && [ -d "${OFFLINE_SOURCE_DIR}/packages" ]; then
+    OFFLINE_BASE="${OFFLINE_SOURCE_DIR}"
+fi
+RPMS_DIR="${OFFLINE_BASE}/packages"
+YUM_LOCAL_ARGS=()
+
+if [ -f "${RPMS_DIR}/repodata/repomd.xml" ] && compgen -G "${RPMS_DIR}/*.rpm" > /dev/null; then
+    cat > /etc/yum.repos.d/k8s-local.repo <<EOF
+[k8s-local]
+name=Kubernetes Local Offline Repo
+baseurl=file://${RPMS_DIR}
+enabled=1
+gpgcheck=0
+EOF
+    yum clean metadata >/dev/null 2>&1 || true
+    yum makecache --disablerepo='*' --enablerepo=k8s-local >/dev/null 2>&1
+    YUM_LOCAL_ARGS=(--disablerepo='*' --enablerepo=k8s-local)
+    echo "[✓] 使用本地 RPM 源: file://${RPMS_DIR}"
 else
-    echo "[=] docker-ce repo 已存在"
+    echo "[!] 未找到完整本地 RPM 源，containerd 将使用配置的在线 yum 源"
+    # 在线回退只在目标环境允许联网时可用。
+    if [ ! -f /etc/yum.repos.d/docker-ce.repo ]; then
+        yum-config-manager --add-repo "$DOCKER_CE_REPO"
+        sed -i 's+download.docker.com+mirrors.aliyun.com/docker-ce+' /etc/yum.repos.d/docker-ce.repo
+        echo "[✓] docker-ce yum 源已配置（阿里云）"
+    else
+        echo "[=] docker-ce repo 已存在"
+    fi
 fi
 
 # --- 2. 安装 containerd ---
-yum install -y containerd.io > /dev/null 2>&1
+yum "${YUM_LOCAL_ARGS[@]}" install -y containerd.io > /dev/null 2>&1
 echo "[✓] containerd.io 已安装"
 
 # --- 3. 生成并修改配置 ---

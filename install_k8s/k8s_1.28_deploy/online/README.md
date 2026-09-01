@@ -1,11 +1,14 @@
 # Kubernetes 1.28 在线部署版（阿里云仓库）
 
-> 3 Master + 6 Worker | containerd | kube-vip HA | Calico | 证书 10 年
+> 支持 1/3/5 个 Master 与任意数量 Worker；本目录只提供默认示例，实际节点以 `config/cluster.env` 为准。
 > **镜像与软件包全部走阿里云公网源，节点需能访问外网**
 
 本目录与 `offline/`（离线）、`private-registry/`（私有仓库）平级，各自独立。本套已在 9 台 CentOS 7.9 真机完整跑通、验收 20/20。
 
-## 集群拓扑
+## 控制面模式
+
+`MASTER_COUNT=1` 时使用 master1 IP 作为控制面端点，不部署 kube-vip；`MASTER_COUNT>1` 时使用 VIP 并部署 kube-vip。`KUBE_PROXY_MODE` 独立控制 Service 转发模式。
+
 
 | 角色 | 主机名 | IP |
 |------|--------|-----|
@@ -44,23 +47,23 @@ online/
     └── deploy-all.sh            # 仅 master1｜一键部署（SSH 分发）
 ```
 
-> 变量集中在 `../config/cluster.env`。改集群信息（节点、VIP、版本）只改那一处；节点增减改 `MASTER_NODES` / `WORKER_NODES` 两个列表即可。
+> 变量集中在 `config/cluster.env`。改集群信息（节点、VIP、版本）只改此文件；节点增减改 `MASTER_NODES` / `WORKER_NODES` 两个列表即可。
 
 ## 快速开始
 
 ### 方式一：一键部署（推荐）
 
 ```bash
-# 1. 编辑 ../config/cluster.env，确认 VIP、节点列表、网卡正确
-# 2. 整个 virtual-k8s 上传到 master1
-scp -r virtual-k8s/ root@192.168.104.104:/opt/k8s-deploy/
+# 1. 编辑 config/cluster.env，确认 VIP、节点列表、网卡正确
+# 2. 整个 online/ 目录上传到 master1
+scp -r online/ root@192.168.104.104:/opt/k8s-deploy/
 # 3. 在 master1 一键部署
 ssh root@192.168.104.104
 cd /opt/k8s-deploy/online/scripts && chmod +x *.sh
 ./deploy-all.sh
 ```
 
-`deploy-all.sh` 按 phase 编排：环境检查 → 系统初始化 → containerd → K8s 组件 → master1 init → master2/3 串行 join → worker 并行 join → Calico → 证书 10 年 → 验收。支持 `--from N`（断点续跑）、`--only N`、`--dry-run`。
+`deploy-all.sh` 按 phase 编排：环境检查 → 系统初始化 → containerd → K8s 组件 → master1 init（单 Master 直连 / 多 Master 使用 kube-vip）→ 其余 master 串行 join → worker 并行 join → Calico → 证书 → 验收。支持 `--from N`（断点续跑）、`--only N`、`--dry-run`。
 
 ### 方式二：分步执行
 
@@ -68,11 +71,11 @@ cd /opt/k8s-deploy/online/scripts && chmod +x *.sh
 
 ## 部署前置条件清单
 
-部署前逐项确认（在线版脚本 `source ../../config/cluster.env`，改配置只改顶层 `../config/cluster.env` 一处）：
+部署前逐项确认（在线版脚本 `source ../config/cluster.env`，改配置只改本目录 `config/cluster.env` 一处）：
 
-- **网络**：9 台节点能访问外网（阿里云/DaoCloud/ghcr.io），VIP `192.168.104.200` 为同网段**未被占用**的空闲 IP。
+- **网络**：当前配置中的全部节点能访问外网（阿里云/DaoCloud/ghcr.io）。仅多 Master 需要 VIP；单 Master 不部署 kube-vip，`k8s-api` 指向 master1。
 - **SSH 免密**：master1 能免密 `ssh root@` 其余 8 台（`deploy-all.sh` 靠这个分发）。
-- **`../config/cluster.env` 必确认项**：
+- **`config/cluster.env` 必确认项**：
   - `MASTER_NODES` / `WORKER_NODES`：节点 IP+主机名列表（增减节点只改这两处，master 数量须为奇数）。
   - `VIP`：kube-vip 虚拟 IP，须空闲。
   - `CALICO_INTERFACE`：多网卡或探测不准时填具体网卡名（如 `ens192`）；单网卡留空自动探测。
@@ -84,18 +87,18 @@ cd /opt/k8s-deploy/online/scripts && chmod +x *.sh
 
 ## 分步部署命令速查
 
-整个 `virtual-k8s/` 传到 master1 后，在 `online/scripts/` 目录里按下表执行。
+整个 `online/` 目录传到 master1 后，在 `online/scripts/` 目录里按下表执行。
 
 | 步骤 | 执行节点 | 命令 | 说明 |
 |------|---------|------|------|
-| 1 | 全部 9 节点 | `./00-env-check.sh` | 环境检查（只读，不改系统） |
-| 2 | 全部 9 节点 | `./01-system-init.sh` | 系统初始化（swap/SELinux/内核模块/sysctl/arp_ignore） |
-| 3 | 全部 9 节点 | `./02-install-containerd.sh` | 装 containerd（阿里云 docker-ce 源） |
-| 4 | 全部 9 节点 | `./03-install-k8s.sh` | 装 kubeadm/kubelet/kubectl（阿里云 kubernetes-new 源） |
-| 5 | 仅 master1 | `./04-init-master1.sh` | kube-vip + kubeadm init，生成 `/etc/kubernetes/deploy/join.env` |
+| 1 | 当前配置中的全部节点 | `./00-env-check.sh` | 环境检查（只读，不改系统） |
+| 2 | 当前配置中的全部节点 | `./01-system-init.sh` | 系统初始化（swap/SELinux/内核模块/sysctl/hosts） |
+| 3 | 当前配置中的全部节点 | `./02-install-containerd.sh` | 装 containerd（阿里云 docker-ce 源） |
+| 4 | 当前配置中的全部节点 | `./03-install-k8s.sh` | 装 kubeadm/kubelet/kubectl（阿里云 kubernetes-new 源） |
+| 5 | 仅 master1 | `./04-init-master1.sh` | 单 Master 直连；多 Master 生成 kube-vip 并使用 VIP |
 | — | master1 → 其余节点 | `scp /etc/kubernetes/deploy/join.env root@<节点>:/etc/kubernetes/deploy/` | 分发 join 凭据（一键版自动做，分步需手动） |
-| 6 | 仅 master2、master3（串行） | `./05-join-master.sh` | 加入控制平面，逐台等 etcd 健康后再加下一台 |
-| 7 | 仅 node1~6（可并行） | `./06-join-worker.sh` | 加入 worker |
+| 6 | 其余 master（串行） | `./05-join-master.sh` | `MASTER_COUNT>1` 时加入控制平面 |
+| 7 | 当前配置中的 worker（可并行） | `./06-join-worker.sh` | 加入 worker |
 | 8 | 仅 master1 | `./07-install-calico.sh` | 装 Calico CNI（VXLAN） |
 | 9 | 每个 master（串行） | `./08-renew-certs.sh` | 证书续期 10 年 |
 | 10 | 仅 master1 | `./09-verify.sh` | 20 项验收，全绿即成功 |

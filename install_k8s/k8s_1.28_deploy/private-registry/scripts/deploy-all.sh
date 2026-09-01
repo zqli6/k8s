@@ -117,10 +117,16 @@ distribute_files() {
 }
 
 # ============================================================
+# 部署前必须先分发配置和脚本。
+# 远程脚本通过 stdin 执行，SCRIPT_DIR 不指向仓库目录，
+# 因此依赖 /opt/k8s-deploy/config/cluster.env 等 fallback 路径。
+# ============================================================
+distribute_files
+
 echo ""
 echo "╔══════════════════════════════════════════════════════════╗"
 echo "║  Kubernetes v${KUBE_VERSION} 集群一键部署                  ║"
-echo "║  3 Master + 6 Worker | kube-vip HA | Calico CNI        ║"
+echo "║  ${MASTER_COUNT} Master + ${WORKER_COUNT} Worker | kube-vip HA | Calico CNI ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo ""
 echo "集群拓扑："

@@ -68,9 +68,14 @@ check "kube-proxy 运行 (${TOTAL_COUNT})" "[ $(kubectl get pods -n kube-system 
 # --- 3. kube-vip ---
 echo ""
 echo "--- kube-vip ---"
-check "kube-vip Pod 运行" "kubectl get pods -n kube-system -l app.kubernetes.io/name=kube-vip --no-headers 2>/dev/null | grep -q Running || kubectl get pods -n kube-system --no-headers 2>/dev/null | grep kube-vip | grep -q Running"
-check "VIP $VIP 可达" "ping -c 1 -W 2 $VIP"
-check "VIP:6443 可连接" "curl -sk https://${VIP}:6443/healthz | grep -q ok"
+if [ "${MASTER_COUNT}" -gt 1 ]; then
+    check "kube-vip Pod 运行" "kubectl get pods -n kube-system -l app.kubernetes.io/name=kube-vip --no-headers 2>/dev/null | grep -q Running || kubectl get pods -n kube-system --no-headers 2>/dev/null | grep kube-vip | grep -q Running"
+    check "VIP $VIP 可达" "ping -c 1 -W 2 $VIP"
+    check "VIP:6443 可连接" "curl -sk https://${VIP}:6443/healthz | grep -q ok"
+else
+    echo "[=] 单 Master 模式，跳过 kube-vip/VIP 检查"
+    check "Master API Server 可连接" "curl -sk https://${MASTER1_IP}:6443/healthz | grep -q ok"
+fi
 
 # --- 4. Calico ---
 echo ""
@@ -86,11 +91,17 @@ check "Pod CIDR 不与宿主网段冲突" "echo '$POD_CIDR_ACTUAL' | grep -v '19
 # --- 5. DNS 测试 ---
 echo ""
 echo "--- DNS 功能测试 ---"
-kubectl run dns-test --image=${IMAGE_REPOSITORY}/busybox:latest --restart=Never --rm -i --wait --timeout=30s -- nslookup kubernetes.default 2>/dev/null && {
-    check "集群 DNS 解析正常" "true"
-} || {
-    check "集群 DNS 解析正常" "false"
-}
+DNS_IMAGE="${DNS_TEST_IMAGE:-}"
+if [ -z "$DNS_IMAGE" ]; then
+    echo "[!] 未配置 DNS_TEST_IMAGE，跳过 Pod 内 DNS 测试"
+    echo "    如需测试，请设置 DNS_TEST_IMAGE=<registry/path/image:tag> 后重新执行"
+else
+    kubectl run dns-test --image="$DNS_IMAGE" --restart=Never --rm -i --wait --timeout=30s -- nslookup kubernetes.default 2>/dev/null && {
+        check "集群 DNS 解析正常" "true"
+    } || {
+        check "集群 DNS 解析正常" "false"
+    }
+fi
 
 # --- 6. 证书 ---
 echo ""
@@ -144,7 +155,7 @@ if [ $FAIL -eq 0 ]; then
     echo -e "${GREEN}"
     echo "  ╔══════════════════════════════════════╗"
     echo "  ║   集群部署验收通过！                    ║"
-    echo "  ║   K8s v${KUBE_VERSION} | 3M + 6W | HA  ║"
+    echo "  ║   K8s v${KUBE_VERSION} | ${MASTER_COUNT}M + ${WORKER_COUNT}W  ║"
     echo "  ╚══════════════════════════════════════╝"
     echo -e "${NC}"
 else
