@@ -6,17 +6,17 @@
 
 下载离线包
 ```
-docker pull swr.cn-southwest-2.myhuaweicloud.com/zqli_s/k8s-1.20.11-offline:26.9.2
+docker pull swr.cn-southwest-2.myhuaweicloud.com/zqli_s/k8s_1.28_deploy:26.9.2
 ```
 复制出文件可参考[Lzq文档](https://www.yuque.com/jianglai-iayzx/wkzfha/mlda3n2mcphvzo2o#wpXxl)
 ```
 docker create --name temp-extract \
-  swr.cn-southwest-2.myhuaweicloud.com/zqli_s/k8s-1.20.11-offline:26.9.2 echo
+  swr.cn-southwest-2.myhuaweicloud.com/zqli_s/k8s_1.28_deploy:26.9.2 echo
 docker cp temp-extract:/data/k8s-1.20.11-offline.tar ./host/
 docker rm temp-extract
 ```
 ```
-ctr image mount swr.cn-southwest-2.myhuaweicloud.com/zqli_s/k8s-1.20.11-offline:26.9.2 /mnt/
+ctr image mount swr.cn-southwest-2.myhuaweicloud.com/zqli_s/k8s_1.28_deploy:26.9.2 /mnt/
 cp /mnt/ ./
 ctr image unmount /mnt/
 ```
