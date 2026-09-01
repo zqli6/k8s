@@ -5,6 +5,6 @@
 # 部署步骤 
 1.lzq SWR仓库版1.12.0
 ```
-kubectl apply -f 
+kubectl apply -f https://gitee.com/zqli6/k8s/raw/main/StorageClass/longhorn/longhorn-1.12.0-lzq.yaml
 ``` 
 2.[GitHub官方文档清单](https://github.com/longhorn/longhorn/blob/master/deploy/longhorn.yaml)
