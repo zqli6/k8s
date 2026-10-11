@@ -1,0 +1,39 @@
+apiVersion: kubeadm.k8s.io/v1beta3
+kind: InitConfiguration
+localAPIEndpoint:
+  advertiseAddress: "MASTER1_IP_PLACEHOLDER"
+  bindPort: 6443
+nodeRegistration:
+  criSocket: unix:///var/run/containerd/containerd.sock
+---
+apiVersion: kubeadm.k8s.io/v1beta3
+kind: ClusterConfiguration
+kubernetesVersion: "v1.28.15"
+controlPlaneEndpoint: "VIP_PLACEHOLDER:6443"
+imageRepository: "registry.aliyuncs.com/google_containers"
+networking:
+  podSubnet: "10.244.0.0/16"
+  serviceSubnet: "10.96.0.0/12"
+  dnsDomain: "cluster.local"
+etcd:
+  local:
+    dataDir: /var/lib/etcd
+apiServer:
+  certSANs:
+    - "VIP_PLACEHOLDER"
+    - "MASTER1_IP_PLACEHOLDER"
+    - "MASTER2_IP_PLACEHOLDER"
+    - "MASTER3_IP_PLACEHOLDER"
+    - "master1"
+    - "master2"
+    - "master3"
+    - "localhost"
+    - "127.0.0.1"
+---
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+cgroupDriver: systemd
+---
+apiVersion: kubeproxy.config.k8s.io/v1alpha1
+kind: KubeProxyConfiguration
+mode: ipvs

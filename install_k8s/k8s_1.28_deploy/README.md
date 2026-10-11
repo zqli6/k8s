@@ -2,7 +2,22 @@
 
 > 支持 1/3/5 个 Master 与任意数量 Worker。每套方案均在自己的 `config/cluster.env` 中配置节点；单 Master 不部署 kube-vip，多 Master 使用 VIP + kube-vip。
 
+## 操作系统适用范围（先读）
 
+本仓库当前包含两套**独立且不可混用**的操作系统方案：
+
+| 方案目录 | 适用系统 | 包管理/运行时 | 当前状态 | 不适用场景 |
+|---|---|---|---|---|
+| `redhat/online/`、`redhat/offline/`、`redhat/swr/` | **CentOS 7.9 x86_64** | yum/rpm，containerd.io | 已有验证方案 | Ubuntu、Debian、CentOS Stream、Rocky/AlmaLinux、ARM |
+| `ubuntu/online/` | **Ubuntu 24.04 LTS (noble) x86_64** | apt/deb，Ubuntu `containerd` 2.2.x | 已在 3 Master + 1 Worker 环境验证 | Debian、Ubuntu 以外系统、ARM |
+| `ubuntu/offline/` | **Ubuntu 24.04 LTS (noble) x86_64** | 本地 deb 源，Ubuntu `containerd` 2.2.x | 已在 3 Master + 1 Worker 环境完成离线验证 | Debian、Ubuntu 以外系统、ARM |
+| `ubuntu/swr/` | Ubuntu apt/deb 方案 | 需按 SWR 仓库权限配置认证 | 待在具备有效 SWR 凭据/公开仓库的环境验证 | 不能直接拿顶层 `swr/` 替代 |
+
+> **`redhat/` 下的 `online/`、`offline/`、`swr/` 是 CentOS 7.9 方案。** 它们使用 `yum`、`rpm`、`/etc/yum.repos.d`，不可直接在 Ubuntu 或 Debian 上运行。
+>
+> **Ubuntu 离线包不能用于 Debian。** `ubuntu/offline/packages/` 中的 deb 包按 Ubuntu 24.04 noble 的依赖链制备；镜像 tar 可在同为 amd64 的系统间复用，但 deb 包必须按目标发行版重新制备。
+>
+> Debian 当前没有经过验证的专用目录；不要把 `ubuntu/` 改名或宣称为 Debian 通用方案。
 
 下载离线包
 ```
@@ -36,7 +51,8 @@ ctr image unmount /mnt/
 | 组件 | 版本 | 来源 |
 |------|------|------|
 | Kubernetes | v1.28.15 | 阿里云 kubernetes-new 源 |
-| containerd | 1.6.33 | 阿里云 docker-ce 源 |
+| containerd（CentOS 方案） | 1.6.33 | 阿里云 docker-ce 源 |
+| containerd（Ubuntu 方案） | Ubuntu apt 当前候选版本；24.04 实测 2.2.1 | Ubuntu apt 源 |
 | kube-vip | v0.8.0 | ghcr.io（ARP 静态 Pod） |
 | Calico | v3.26.4 | VXLAN 数据面（DaoCloud 加速） |
 | 证书 | 10 年 | update-kubeadm-cert.sh（openssl 重签） |
@@ -44,16 +60,16 @@ ctr image unmount /mnt/
 
 ---
 
-## 四套部署方案
+## 部署方案
 
-本仓库提供**四套平级、独立自包含**的部署方案，按场景选用：
+本仓库提供 **CentOS 7.9 三套平级方案 + Ubuntu 系列**，按场景选用。顶层三套方案就是 CentOS 方案，请勿在 Ubuntu/Debian 上执行：
 
-| 目录 | 场景 | 镜像来源 | 脚本数 |
-|------|------|---------|:---:|
-| [`online/`](online/README.md) | **在线部署**（节点能上外网） | 阿里云 + DaoCloud | 11 |
-| [`offline/`](offline/README.md) | **离线部署**（air-gap 无外网） | 本地 tar 导入 | 12 |
-| [`private-registry/`](private-registry/README.md) | **Harbor 私有仓库** | Harbor（自签证书） | 12 |
-| [`swr/`](swr/README.md) | **华为云 SWR 仓库** | SWR private 组织 | 12 |
+| 目录 | 场景 | OS | 镜像来源 |
+|------|------|----|---------|
+| [`redhat/online/`](redhat/online/README.md) | **CentOS 在线部署**（节点能上外网） | CentOS 7.9 x86_64 | 阿里云 + DaoCloud |
+| [`redhat/offline/`](redhat/offline/README.md) | **CentOS 离线部署**（air-gap 无外网） | CentOS 7.9 x86_64 | 本地 rpm + tar |
+| [`redhat/swr/`](redhat/swr/README.md) | **CentOS 华为云 SWR** | CentOS 7.9 x86_64 | SWR private 组织 |
+| [`ubuntu/`](ubuntu/README.md) | **Ubuntu 系列**（online/offline/SWR） | Ubuntu 22.04/24.04 x86_64；offline 已按 Ubuntu 24.04 noble 验证 | 阿里云 / 本地 / SWR |
 
 每套目录结构（自包含）：`config/cluster.env` + `scripts/*.sh` + `tools/` + `manifests/`。
 
@@ -67,9 +83,9 @@ ctr image unmount /mnt/
 ## 快速开始（在线版一键部署）
 
 ```bash
-# 1. 修改 online/config/cluster.env 中的 VIP、节点列表和 kube-proxy 模式
-# 2. 上传 online/ 目录到 master1
-scp -r online/ root@192.168.104.104:/opt/k8s-deploy/
+# 1. 修改 redhat/online/config/cluster.env 中的 VIP、节点列表和 kube-proxy 模式
+# 2. 上传 redhat/online/ 目录到 master1；该 scp 命令最终生成 /opt/k8s-deploy/online/
+scp -r redhat/online/ root@192.168.104.104:/opt/k8s-deploy/
 
 # 3. 一键部署
 ssh root@192.168.104.104
@@ -81,9 +97,25 @@ cd /opt/k8s-deploy/online/scripts && chmod +x *.sh
 
 ---
 
+## 完全离线介质如何自行准备
+
+完整镜像清单、Ubuntu deb、CentOS 7 RPM、Calico manifest、仓库元数据、SHA-256 清单、打包和真正断网验收流程见：
+
+- **[`docs/Kubernetes完全离线介质制备与验收指南.md`](docs/Kubernetes完全离线介质制备与验收指南.md)**
+
+当前基准完整功能集包含 7 个 Kubernetes 核心镜像、3 个 Calico 镜像和 1 个 kube-vip 镜像；镜像 tar 可在版本与 CPU 架构相同的 Ubuntu/CentOS 间复用，但 deb/rpm 必须按目标发行版重新制备。新增 Ingress、MetalLB、CSI、监控等组件时，还要把它们各自的镜像和清单加入离线介质。
+
+---
+
+## 容器运行时与 Kubernetes 镜像仓库配置
+
+**[`docs/容器运行时与Kubernetes镜像仓库配置指南.md`](docs/容器运行时与Kubernetes镜像仓库配置指南.md)** — 区分 containerd/Docker 的仓库连接、TLS、密码认证，以及 kubeadm、Calico、kube-vip 的镜像配置位置；同时逐项对应本项目脚本的实现。
+
+---
+
 ## 网络深度手册（必读）
 
-**[`docs/k8s-network-guide.md`](docs/k8s-network-guide.md)** — 941 行、20 个 mermaid 图的完整 K8s 网络技术文档：
+**[`docs/Kubernetes网络原理与实践指南.md`](docs/Kubernetes网络原理与实践指南.md)** — 941 行、20 个 mermaid 图的完整 K8s 网络技术文档：
 
 - OSI 七层模型与 K8s（什么是 L2/L3/L4/L7、为什么 VIP ping 不通）
 - kube-proxy 三种模式详解（iptables/IPVS/nftables 数据流、kube-ipvs0 网卡、怎么查/改/风险）
@@ -134,7 +166,7 @@ cd /opt/k8s-deploy/online/scripts && chmod +x *.sh
 | 6 | Calico 网卡选错 kube-ipvs0 | 多节点 IP 冲突崩溃 | interface= 精确网卡 |
 | 7 | MetalLB ARP 泄漏 | 多节点抢答 VIP | arp_ignore=1 |
 | 8 | SWR 拒多平台 OCI index | kube-vip push 失败 | --platform linux/amd64 |
-| 9 | containerd hosts.toml 无 auth | SWR private 拉不到 | 改用 config.toml registry.configs |
+| 9 | containerd hosts.toml 无 auth | SWR private 拉不到 | CentOS 1.6 可用旧式 auth；Ubuntu 2.x 必须 `crictl pull` 实测，必要时预拉 static Pod 镜像/为普通 Pod 配 `imagePullSecret` |
 
 ---
 
