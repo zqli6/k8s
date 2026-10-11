@@ -19,7 +19,25 @@
 >
 > Debian 当前没有经过验证的专用目录；不要把 `ubuntu/` 改名或宣称为 Debian 通用方案。
 
-下载离线包
+## 下载离线包
+*先克隆本目录，然后需拉取images及依赖packages(不一定需要),对应目录中有拉取方法*
+```
+.
+├── docs
+├── README.md
+├── redhat
+│   ├── offline
+│   │   ├── images
+│   │   │   └── README.md
+│   │   ├── packages
+│   │   │   └── README.md
+└── ubuntu
+    ├── offline
+    │   ├── images
+    │   │   └── README.md
+    │   ├── packages
+    │   │   └── README.md
+```
 ```
 docker pull swr.cn-southwest-2.myhuaweicloud.com/zqli_s/k8s_1.28_deploy:26.9.2
 ```
