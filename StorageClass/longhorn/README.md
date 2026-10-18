@@ -12,18 +12,18 @@ kubectl apply -f https://gitee.com/zqli6/k8s/raw/main/StorageClass/longhorn/long
 3. swr仓库密码
 ```
 # 1. 创建 Secret（存储 SWR 登录凭据）
-kubectl create secret docker-registry swr-auth -n longhorn \
+kubectl create secret docker-registry swr-auth -n longhorn-system \
   --docker-server=swr.cn-southwest-2.myhuaweicloud.com \
   --docker-username='cn-southwest-2@HST3WBRU8484RY3AGAFX' \
   --docker-password='8eb15bd0873dc162d8be3057ba45653764d344d3926484c1bbf1e1836b2a01cd'
 
 # 2. 绑定到 ServiceAccount
-kubectl get pod -n longhron -o jsonpath='{range .items[*]}{.spec.serviceAccountName}{"\n"}{end}' \
+kubectl get pod -n longhron-system -o jsonpath='{range .items[*]}{.spec.serviceAccountName}{"\n"}{end}' \
   | sort -u \
   | while read sa; do
       [ -z "$sa" ] && continue
       echo ">>> patching SA: $sa"
-      kubectl patch serviceaccount "$sa" -n longhorn \
+      kubectl patch serviceaccount "$sa" -n longhorn-system \
         -p '{"imagePullSecrets": [{"name": "swr-auth"}]}'
     done
 ```
