@@ -18,7 +18,7 @@ kubectl create secret docker-registry swr-auth -n longhorn-system \
   --docker-password='8eb15bd0873dc162d8be3057ba45653764d344d3926484c1bbf1e1836b2a01cd'
 
 # 2. 绑定到 ServiceAccount
-kubectl get pod -n longhron-system -o jsonpath='{range .items[*]}{.spec.serviceAccountName}{"\n"}{end}' \
+kubectl get pod -n longhorn-system -o jsonpath='{range .items[*]}{.spec.serviceAccountName}{"\n"}{end}' \
   | sort -u \
   | while read sa; do
       [ -z "$sa" ] && continue
