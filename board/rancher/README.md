@@ -16,7 +16,7 @@ helm registry login swr.cn-southwest-2.myhuaweicloud.com \
 ```
 ```
 # 直接部署
-helm install rancher oci://swr.cn-southwest-2.myhuaweicloud.com/zqli_c/rancher-lzq \
+helm install rancher oci://swr.cn-southwest-2.myhuaweicloud.com/zqli_c/rancher \
   --version 2.15.3 -n rancher --create-namespace
 # 增加`--set hostname=rancher.example.com`指定域名，默认为`rancher.lzq.org`
 ```
